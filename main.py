@@ -9,7 +9,6 @@ import h5py
 from PyQt5.QtCore import QRunnable, QThreadPool, QThread, QObject, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QPixmap, QImage, QImageReader
 from PyQt5 import QtCore, QtWidgets
-import matplotlib.pyplot as plt
 import numpy as np
 
 import mainWindow
