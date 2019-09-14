@@ -1,7 +1,3 @@
-"""
-Main file that I work on.
-"""
-
 import PyQt5
 import sys
 # import os
@@ -24,34 +20,42 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         super().__init__()
         self.setupUi(self)
 
-        # Setup some attributes:
+        # Setup attributes:
+        self.filename = ''
         self.slice = 0
+        self.cmap = 'plasma'
 
-        ### connect UI signals to slots (functions)
+        # Connect UI signals to slots (functions):
         self.actionOpen.triggered.connect(self.browse_folder)
         self.actionQuit.triggered.connect(self.close)
 
-        self.cmap_buttonGroup.buttonClicked.connect(self.plot_data)
+        self.menuColormap.triggered.connect(self.change_cmap)
+        self.comboBox_magn_phase.currentIndexChanged.connect(self.plot_data_if_data)
 
-        self.mplwidget_left.canvas.axes.set_title('Magnitude')
-        self.mplwidget_right.canvas.axes.set_title('Phase')
-
-        ### generate worker threads
+        # Generate worker threads (ThreadPool):
         self.threadpool = QThreadPool()
 
-        ### generate Slection UI
-        # When .h5 contains more than one set of data, this box lets user select dataset
-        self.box = SelectBox()
-        self.box.listWidget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        self.box.buttonOk.clicked.connect(self.read_data)
+        # Generate Selection UI:
+        # When .h5 contains more than one set of data, this box lets user select dataset.
+        self.select_box = SelectBox()
+        self.select_box.listWidget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
+        self.select_box.buttonOk.clicked.connect(self.read_data)
 
-        ### object for handling data
+        # Object for storing and handling data:
         self.handle_data = DataHandling()
 
+
     def wheelEvent(self, event):
+        """
+        This function handles going through the data slices (if there are ones) via the mouse wheel. It turns a 120°
+        turn in the y direction of the mousewheel into one slice difference.
+        This function only does somethingif there are data slices given.
+        :param event: WheelEvent
+        :return: None
+        """
         if isinstance(self.handle_data.magn_slices, np.ndarray):
-            print(self.slice)
-            print(event.angleDelta().y())
+            # print(self.slice)
+            # print(event.angleDelta().y())
 
             d = event.angleDelta().y() // 120
             slice_i = self.slice + d
@@ -60,36 +64,41 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
                 self.plot_data()
 
+    def close(self):
+        sys.exit()
+
+
+    @pyqtSlot()
     def browse_folder(self):
     ### Function for picking a h5-file and calling the file read function in a seperate thread
         filename = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
         if filename[0]:
             self.filename = h5py.File(filename[0])  # <HDF5 file "test_data.h5" (mode r+)>
             if len(self.filename) > 1:
-                # When there is more than one dataset: extra window (box) opens, which allows user to chose a dataset
-                self.box.show()
+                # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
+                # dataset:
+                self.select_box.show()
                 for name in self.filename:
-                    self.box.listWidget.addItem(name)
-                    # When user chooses dataset, read_data() is called.
+                    self.select_box.listWidget.addItem(name)
+                    # When user chooses dataset in the select_box, read_data() is called.
             else:
-            # New Thread is started by creating an instance of GetFileContent/QRunnable and passing it to QThreadPool.start()
-                get_thread = GetFileContent(self.filename, self.filename)
-                get_thread.signals.dataAdded.connect(self.add_data)
-                get_thread.signals.finished.connect(self.done)
-                self.threadpool.start(get_thread)
-
-    def close(self):
-        sys.exit()
+                # New Thread is started by creating an instance of GetFileContent/QRunnable and passing it to
+                # QThreadPool.start():
+                get_file_content_thread = GetFileContent(self.filename, self.filename)
+                get_file_content_thread.signals.dataAdded.connect(self.add_data)
+                get_file_content_thread.signals.finished.connect(self.done)
+                self.threadpool.start(get_file_content_thread)
+                self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
 
     @pyqtSlot()
     ### A Slot(Function) to read in the data, selected in the UI
     def read_data(self):
-        self.box.confirm()
-        get_thread = GetFileContent(self.filename, self.box.selected)
-        get_thread.signals.dataAdded.connect(self.add_data)
-        get_thread.signals.finished.connect(self.done)
-        # get_thread.signals.finished.connect(self.plot_data)
-        self.threadpool.start(get_thread)
+        self.select_box.confirm()
+        get_file_content_thread = GetFileContent(self.filename, self.select_box.selected)
+        get_file_content_thread.signals.dataAdded.connect(self.add_data)
+        get_file_content_thread.signals.finished.connect(self.done)
+        # get_file_content_thread.signals.finished.connect(self.plot_data)
+        self.threadpool.start(get_file_content_thread)
         self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the thread pool
 
     @pyqtSlot(object)
@@ -101,25 +110,32 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.plot_data()
 
     @pyqtSlot()
+    def change_cmap(self):
+        self.cmap = self.menuColormap.sender().text().lower()
+        self.plot_data_if_data()
+
+    @pyqtSlot()
+    def plot_data_if_data(self):
+        """
+        This function calls the function plot_data() if any data is given in self.handle_data.data,
+        else it does nothing.
+        :return: None
+        """
+        if isinstance(self.handle_data.data, np.ndarray):
+            self.plot_data()
+
+    @pyqtSlot()
     def plot_data(self):
         """
         This function checks if there is data stored as slices or one slice only and plots the data accordingly on the
-        two mplwidgets of self. It also sets the slice label's text.
-        :return:
+        mplwidget of self. It also sets the slice label's text.
+        :return: None
         """
+        print('Called plot function.')
         # Clearing Axes, setting title:
-        self.mplwidget_left.canvas.axes.clear()
-        self.mplwidget_right.canvas.axes.clear()
-        self.mplwidget_left.canvas.axes.set_title('Magnitude')
-        self.mplwidget_right.canvas.axes.set_title('Phase')
-
-        # Determine which colormap is chosen:
-        if self.cmapPlasma_radioButton.isChecked():
-            cmap = 'plasma'
-        elif self.cmapViridis_radioButton.isChecked():
-            cmap = 'viridis'
-        elif self.cmapGray_radioButton.isChecked():
-            cmap = 'gray'
+        if isinstance(self.handle_data.data, np.ndarray):
+            self.mplwidget.canvas.axes.clear()
+            self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
 
         # Checking if a single slice or multiple are in data:
         if isinstance(self.handle_data.magn_slices, np.ndarray):
@@ -129,30 +145,28 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
                 # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
                 self.slice = self.handle_data.magn_slices.shape[0] - 1
-            # Multiple slices of data:
-            if self.handle_data.magn_slices.ndim == 3:
-                self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_slices[self.slice, :, :], cmap=cmap)
-                self.mplwidget_right.canvas.axes.imshow(self.handle_data.phase_slices[self.slice, :, :], cmap=cmap)
-            elif self.handle_data.magn_slices.ndim == 4:
-                self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_slices[self.slice, 1, :, :], cmap=cmap)
-                self.mplwidget_right.canvas.axes.imshow(self.handle_data.phase_slices[self.slice, 1, :, :], cmap=cmap)
+
+            if self.comboBox_magn_phase.currentText() == 'Magnitude':
+                self.mplwidget.canvas.axes.imshow(self.handle_data.magn_slices[self.slice, :, :], cmap=self.cmap)
+            elif self.comboBox_magn_phase.currentText() == 'Phase':
+                self.mplwidget.canvas.axes.imshow(self.handle_data.phase_slices[self.slice, :, :], cmap=self.cmap)
 
             self.slice_label.setText(f'Slice {self.slice + 1}/{self.handle_data.magn_slices.shape[0]}')
 
         elif isinstance(self.handle_data.magn_values, np.ndarray):
             # Only one slice of data:
-            self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_values, cmap=cmap)
-            # im_magn = self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_values)
-            # self.mplwidget_left.canvas.colorbar(im_magn)
-
-            self.mplwidget_right.canvas.axes.imshow(self.handle_data.phase_values, cmap=cmap)
-            # im_phase = self.mplwidget_right.canvas.axes.imshow(self.handle_data.phase_values)
-            # self.mplwidget_right.canvas.colorbar(im_phase)
+            if self.comboBox_magn_phase.currentText() == 'Magnitude':
+                self.mplwidget.canvas.axes.imshow(self.handle_data.magn_values, cmap=self.cmap)
+                # im_magn = self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_values)
+                # self.mplwidget_left.canvas.colorbar(im_magn)
+            elif self.comboBox_magn_phase.currentText() == 'Phase':
+                self.mplwidget.canvas.axes.imshow(self.handle_data.phase_values, cmap=self.cmap)
 
             self.slice_label.setText(f'Slice 1/1')
 
-        self.mplwidget_left.canvas.draw()
-        self.mplwidget_right.canvas.draw()
+        self.mplwidget.canvas.axes.axis('off')
+
+        self.mplwidget.canvas.draw()
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
@@ -163,6 +177,7 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         self.buttonCancel.clicked.connect(self.cancel)
         self.selected = []
 
+    @pyqtSlot()
     def cancel(self):
         self.selected = []
         self.hide()
@@ -175,33 +190,32 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         self.listWidget.clear()
         self.hide()
 
-    ### A container for storing the data
 
-
-class FileNameSignals(QObject):
-#### Class for generating thread signals for GetFileContent()
+class GetFileContent(QRunnable):
     """
+    Handling file input ||| Will be called in a separate thread
+    """
+    def __init__(self, filename, entries, *args, **kwargs):
+        super().__init__()
+        self.filename = filename
+        self.entries = entries
+        self.signals = FileSignals()
+
+    def run(self):
+        for name in self.entries:
+            self.signals.dataAdded.emit(self.filename[name][()])  # old: self.filename[name].value
+        self.signals.finished.emit()
+
+
+class FileSignals(QObject):
+    """
+    Class for generating thread signals for GetFileContent()
     http://pyqt.sourceforge.net/Docs/PyQt5/signals_slots.html#defining-new-signals-with-pyqtsignal
     New signals can be defined as class attributes using the pyqtSignal() factory.
     New signals should only be defined in sub-classes of QObject.
     """
     finished = pyqtSignal()
     dataAdded = pyqtSignal(object)
-
-
-class GetFileContent(QRunnable):
-#### Handling file input ||| Will be called in a seperate thread
-    def __init__(self, filename, entries, *args, **kwargs):
-        super().__init__()
-        self.filename = filename
-        self.entries = entries
-        self.signals = FileNameSignals()
-
-    @pyqtSlot()
-    def run(self):
-        for name in self.entries:
-            self.signals.dataAdded.emit(self.filename[name][()])  # old: self.filename[name].value
-        self.signals.finished.emit()
 
 
 class DataHandling():
@@ -229,8 +243,17 @@ class DataHandling():
             self.phase_values = np.angle(self.data)
             self.magn_slices = 0
             self.phase_slices = 0
-        else:
+        elif self.data.ndim == 3:
             # Data contains multiple slices; can I be sure that with every dataset the slice dimension is the same (0)?
+            print(f'Dimension now: {self.data.shape}')
+            self.magn_slices = np.abs(self.data)
+            self.phase_slices = np.angle(self.data)
+            self.magn_values = 0
+            self.phase_values = 0
+        elif self.data.ndim == 4:
+            # There is one extra dimension we don't need, this happens in our test data; We should not encounter this
+            # case in real life later on.
+            self.data = np.squeeze(self.data[:, 0, :, :])
             self.magn_slices = np.abs(self.data)
             self.phase_slices = np.angle(self.data)
             self.magn_values = 0

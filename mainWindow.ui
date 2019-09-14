@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1124</width>
-    <height>564</height>
+    <width>698</width>
+    <height>588</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -15,119 +15,90 @@
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout">
-    <item row="0" column="5">
-     <widget class="QSlider" name="horizontalSlider">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+    <item row="0" column="0">
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>Show:</string>
       </property>
      </widget>
+    </item>
+    <item row="1" column="0" colspan="9">
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="MplWidget" name="mplwidget" native="true">
+        <property name="mouseTracking">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
     <item row="0" column="1">
-     <widget class="QRadioButton" name="cmapPlasma_radioButton">
-      <property name="text">
-       <string>Plasma</string>
-      </property>
-      <property name="checked">
-       <bool>true</bool>
-      </property>
-      <attribute name="buttonGroup">
-       <string notr="true">cmap_buttonGroup</string>
-      </attribute>
+     <widget class="QComboBox" name="comboBox_magn_phase">
+      <item>
+       <property name="text">
+        <string comment="magnitude">Magnitude</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string comment="phase">Phase</string>
+       </property>
+      </item>
      </widget>
     </item>
-    <item row="0" column="4">
+    <item row="0" column="2">
      <spacer name="horizontalSpacer_3">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
       <property name="sizeHint" stdset="0">
        <size>
-        <width>150</width>
-        <height>20</height>
+        <width>125</width>
+        <height>19</height>
        </size>
       </property>
      </spacer>
     </item>
-    <item row="0" column="0">
-     <widget class="QLabel" name="cmap_label">
-      <property name="text">
-       <string>Choose a colormap:</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="9">
-     <widget class="QLabel" name="slice_label">
-      <property name="text">
-       <string>Slice -/-</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="2">
-     <widget class="QRadioButton" name="cmapViridis_radioButton">
-      <property name="text">
-       <string>Viridis</string>
-      </property>
-      <attribute name="buttonGroup">
-       <string notr="true">cmap_buttonGroup</string>
-      </attribute>
-     </widget>
-    </item>
     <item row="0" column="3">
-     <widget class="QRadioButton" name="cmapGray_radioButton">
-      <property name="text">
-       <string>Gray</string>
-      </property>
-      <attribute name="buttonGroup">
-       <string notr="true">cmap_buttonGroup</string>
-      </attribute>
-     </widget>
-    </item>
-    <item row="0" column="6">
-     <spacer name="horizontalSpacer_2">
+     <widget class="QSlider" name="horizontalSlider">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>40</width>
-        <height>20</height>
-       </size>
-      </property>
-     </spacer>
+     </widget>
     </item>
-    <item row="0" column="10">
+    <item row="0" column="8">
      <spacer name="horizontalSpacer">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
       <property name="sizeHint" stdset="0">
        <size>
-        <width>207</width>
-        <height>20</height>
+        <width>204</width>
+        <height>19</height>
        </size>
       </property>
      </spacer>
     </item>
-    <item row="1" column="0" colspan="11">
-     <layout class="QHBoxLayout" name="horizontalLayout">
-      <item>
-       <widget class="MplWidget" name="mplwidget_left" native="true">
-        <property name="mouseTracking">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="MplWidget" name="mplwidget_right" native="true">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-       </widget>
-      </item>
-     </layout>
+    <item row="0" column="7">
+     <widget class="QLabel" name="slice_label">
+      <property name="text">
+       <string>Slice -/-</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="4" colspan="2">
+     <spacer name="horizontalSpacer_2">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>37</width>
+        <height>19</height>
+       </size>
+      </property>
+     </spacer>
     </item>
    </layout>
   </widget>
@@ -136,7 +107,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1124</width>
+     <width>698</width>
      <height>21</height>
     </rect>
    </property>
@@ -148,7 +119,16 @@
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
+   <widget class="QMenu" name="menuColormap">
+    <property name="title">
+     <string>Colormap</string>
+    </property>
+    <addaction name="actionPlasma"/>
+    <addaction name="actionViridis"/>
+    <addaction name="actionGray"/>
+   </widget>
    <addaction name="menuMain"/>
+   <addaction name="menuColormap"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionOpen">
@@ -166,6 +146,35 @@
     <string>test</string>
    </property>
   </action>
+  <actiongroup name="GroupColormap">
+   <action name="actionPlasma">
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+    <property name="checked">
+     <bool>true</bool>
+    </property>
+    <property name="text">
+     <string>Plasma</string>
+    </property>
+   </action>
+   <action name="actionViridis">
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+    <property name="text">
+     <string>Viridis</string>
+    </property>
+   </action>
+   <action name="actionGray">
+    <property name="checkable">
+     <bool>true</bool>
+    </property>
+    <property name="text">
+     <string>Gray</string>
+    </property>
+   </action>
+  </actiongroup>
  </widget>
  <customwidgets>
   <customwidget>
@@ -177,7 +186,4 @@
  </customwidgets>
  <resources/>
  <connections/>
- <buttongroups>
-  <buttongroup name="cmap_buttonGroup"/>
- </buttongroups>
 </ui>
