@@ -6,7 +6,7 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -102,4 +102,4 @@ class Ui_MainWindow(object):
         self.actionViridis.setText(_translate("MainWindow", "Viridis"))
         self.actionGray.setText(_translate("MainWindow", "Gray"))
 
-from mplwidget import MplWidget
+from imageviewer.ui.mplwidget import MplWidget

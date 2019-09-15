@@ -1,14 +1,11 @@
-import PyQt5
 import sys
 # import os
 import h5py
-from PyQt5.QtCore import QRunnable, QThreadPool, QThread, QObject, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QPixmap, QImage, QImageReader
-from PyQt5 import QtCore, QtWidgets
+from PyQt5.QtCore import QRunnable, QThreadPool, QObject, pyqtSignal, pyqtSlot
+from PyQt5 import QtWidgets
 import numpy as np
 
-import mainWindow
-import selectBox
+from imageviewer.ui import mainWindow, selectBox
 
 
 class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
@@ -276,7 +273,3 @@ def main():
     form = ImageViewer()
     form.show()
     app.exec_()
-
-
-if __name__ == '__main__':
-    main()
