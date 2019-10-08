@@ -67,25 +67,32 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     @pyqtSlot()
     def browse_folder(self):
-    ### Function for picking a h5-file and calling the file read function in a seperate thread
-        filename = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
-        if filename[0]:
-            self.filename = h5py.File(filename[0])  # <HDF5 file "test_data.h5" (mode r+)>
-            if len(self.filename) > 1:
-                # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
-                # dataset:
-                self.select_box.show()
-                for name in self.filename:
-                    self.select_box.listWidget.addItem(name)
-                    # When user chooses dataset in the select_box, read_data() is called.
-            else:
-                # New Thread is started by creating an instance of GetFileContent/QRunnable and passing it to
-                # QThreadPool.start():
-                get_file_content_thread = GetFileContent(self.filename, self.filename)
-                get_file_content_thread.signals.dataAdded.connect(self.add_data)
-                get_file_content_thread.signals.finished.connect(self.done)
-                self.threadpool.start(get_file_content_thread)
-                self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
+        ### Function for picking a h5-file and calling the file read function in a seperate thread
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
+        if filename:
+            self.filename = h5py.File(filename)
+            print(filename, type(filename))
+            print(self.filename, type(self.filename))
+            self.open_file()
+
+    @pyqtSlot()
+    def open_file(self):
+        if len(self.filename) > 1:
+            # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
+            # dataset:
+            self.select_box.show()
+            for name in self.filename:
+                self.select_box.listWidget.addItem(name)
+                # When user chooses dataset in the select_box, read_data() is called.
+        else:
+            # New Thread is started by creating an instance of GetFileContent/QRunnable and passing it to
+            # QThreadPool.start():
+            get_file_content_thread = GetFileContent(self.filename, self.filename)
+            get_file_content_thread.signals.dataAdded.connect(self.add_data)
+            get_file_content_thread.signals.finished.connect(self.done)
+            self.threadpool.start(get_file_content_thread)
+            self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
+
 
     @pyqtSlot()
     ### A Slot(Function) to read in the data, selected in the UI
@@ -228,11 +235,11 @@ class DataHandling():
     def add_data(self, data):
         # Removing unnecessary dimension; is there data where there is more than 1 dimension to be removed?
         self.data = np.squeeze(data)
-        print(f'Shape original: {data.shape} \n')
-        print(f'Shape squeezed: {self.data.shape} \n')
-        print(f'Type: {type(self.data)}')
-        print(f'DType: {self.data.dtype}')
-        print(f'Dimensions: {self.data.ndim}')
+        # print(f'Shape original: {data.shape}')
+        # print(f'Shape squeezed: {self.data.shape} \n')
+        # print(f'Type: {type(self.data)}')
+        # print(f'DType: {self.data.dtype}')
+        # print(f'Dimensions: {self.data.ndim}')
 
         if self.data.ndim < 3:
             # Data is just one slice
@@ -242,7 +249,6 @@ class DataHandling():
             self.phase_slices = 0
         elif self.data.ndim == 3:
             # Data contains multiple slices; can I be sure that with every dataset the slice dimension is the same (0)?
-            print(f'Dimension now: {self.data.shape}')
             self.magn_slices = np.abs(self.data)
             self.phase_slices = np.angle(self.data)
             self.magn_values = 0

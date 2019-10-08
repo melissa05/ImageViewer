@@ -6,7 +6,7 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -62,16 +62,16 @@ class Ui_MainWindow(object):
         self.actionQuit.setObjectName("actionQuit")
         self.actionTest = QtWidgets.QAction(MainWindow)
         self.actionTest.setObjectName("actionTest")
-        self.GroupColormap = QtWidgets.QActionGroup(MainWindow)
-        self.GroupColormap.setObjectName("GroupColormap")
-        self.actionPlasma = QtWidgets.QAction(self.GroupColormap)
+        self.groupColormap = QtWidgets.QActionGroup(MainWindow)
+        self.groupColormap.setObjectName("groupColormap")
+        self.actionPlasma = QtWidgets.QAction(self.groupColormap)
         self.actionPlasma.setCheckable(True)
         self.actionPlasma.setChecked(True)
         self.actionPlasma.setObjectName("actionPlasma")
-        self.actionViridis = QtWidgets.QAction(self.GroupColormap)
+        self.actionViridis = QtWidgets.QAction(self.groupColormap)
         self.actionViridis.setCheckable(True)
         self.actionViridis.setObjectName("actionViridis")
-        self.actionGray = QtWidgets.QAction(self.GroupColormap)
+        self.actionGray = QtWidgets.QAction(self.groupColormap)
         self.actionGray.setCheckable(True)
         self.actionGray.setObjectName("actionGray")
         self.menuMain.addAction(self.actionOpen)

@@ -146,7 +146,7 @@
     <string>test</string>
    </property>
   </action>
-  <actiongroup name="GroupColormap">
+  <actiongroup name="groupColormap">
    <action name="actionPlasma">
     <property name="checkable">
      <bool>true</bool>
