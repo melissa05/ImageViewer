@@ -6,7 +6,12 @@ from matplotlib.figure import Figure
 
 
 class MplWidget(QWidget):
+    """
+    Selfmade widget used to visualize image data.
 
+    :ivar canvas: The actual matplotlib figure canvas where data is plotted.
+    :vartype canvas: :class:`matplotlib.backends.backend_qt5agg.FigureCanvasQTAgg`
+    """
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
 

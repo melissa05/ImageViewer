@@ -1,105 +1,199 @@
 import sys
-# import os
+import os
 import h5py
-from PyQt5.QtCore import QRunnable, QThreadPool, QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QThreadPool, pyqtSlot
 from PyQt5 import QtWidgets
 import numpy as np
 
+from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
 from imageviewer.ui import mainWindow, selectBox
 
 
 class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     """
-    Main class for showing the UI.
-    Running in the main thread.
+    Main class for showing the UI. Runs in the main thread.
+
+    Lets user open h5 and dicom files of which image data will be displayed using matplotlib, change the colormap,
+    and select if magnitude or phase shall be displayed.
+
+    :ivar filename: Either the h5 file the user selected, or a list of the names of the first files of all dicom
+        dataset within a dicom directory.
+    :vartype filename: instance of h5py._hl.files.File (in case of h5), or list[str] (in case of dicom)
+    :ivar directory: Whole path of the dicom directory the user selected.
+    :vartype directory: str
+    :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory, identified
+        by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
+    :vartype dicom_sets: list[list[str]]
+    :ivar slice: The number of the slice of the image data being displayed.
+    :vartype slice: int
+    :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
+    :vartype cmap: str
+    :ivar select_box: Window which lets user select a dataset within a selected file/directory.
+    :vartype select_box: :class:`SelectBox`
+    :ivar data_handling: Data is being processed and stored here.
+    :vartype data_handling: :class:`DataHandling`
+    :ivar mplwidget: A selfmade widget (inherits from QWidget) which is used to visualize image data.
+    :vartype mplwidget: :class:`~imageviwer.ui.mplwidget.MplWidget`
     """
-    def __init__(self, parent=None):
+    def __init__(self):
         super().__init__()
         self.setupUi(self)
 
         # Setup attributes:
         self.filename = ''
+        self.directory = ''
+        self.dicom_sets = []
         self.slice = 0
         self.cmap = 'plasma'
 
         # Connect UI signals to slots (functions):
-        self.actionOpen.triggered.connect(self.browse_folder)
+        self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
+        self.actionOpen_dcm.triggered.connect(self.browse_folder_dcm)
         self.actionQuit.triggered.connect(self.close)
 
         self.menuColormap.triggered.connect(self.change_cmap)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.plot_data_if_data)
 
-        # Generate worker threads (ThreadPool):
-        self.threadpool = QThreadPool()
-
         # Generate Selection UI:
-        # When .h5 contains more than one set of data, this box lets user select dataset.
+        # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
         self.select_box = SelectBox()
-        self.select_box.listWidget.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.select_box.buttonOk.clicked.connect(self.read_data)
 
         # Object for storing and handling data:
-        self.handle_data = DataHandling()
+        self.data_handling = DataHandling()
+
+        # Generate worker threads (ThreadPool):
+        self.threadpool = QThreadPool()
 
 
     def wheelEvent(self, event):
         """
-        This function handles going through the data slices (if there are ones) via the mouse wheel. It turns a 120°
+        This function enables going through the data slices (if there are ones) using the mouse wheel. It turns a 120°
         turn in the y direction of the mousewheel into one slice difference.
-        This function only does somethingif there are data slices given.
-        :param event: WheelEvent
-        :return: None
+        This function only does something if there are data slices given.
+
+        :param event: The wheel event.
+        :type event: QWheelEvent
         """
-        if isinstance(self.handle_data.magn_slices, np.ndarray):
+        if isinstance(self.data_handling.magn_slices, np.ndarray):
             # print(self.slice)
             # print(event.angleDelta().y())
 
             d = event.angleDelta().y() // 120
             slice_i = self.slice + d
-            if 0 <= slice_i and slice_i < self.handle_data.magn_slices.shape[0]:
+            if 0 <= slice_i and slice_i < self.data_handling.magn_slices.shape[0]:
                 self.slice = slice_i
 
                 self.plot_data()
 
     def close(self):
+        """
+        Exits the application.
+        """
         sys.exit()
 
 
     @pyqtSlot()
-    def browse_folder(self):
-        ### Function for picking a h5-file and calling the file read function in a seperate thread
+    def browse_folder_h5(self):
+        """
+        Opens a file dialog for selecting an .h5 file. Once a file is selected, it is stored in :attr:`~filename` and
+        :meth:`open_file_h5` gets called.
+        """
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
         if filename:
             self.filename = h5py.File(filename)
             print(filename, type(filename))
-            print(self.filename, type(self.filename))
-            self.open_file()
+            print('imageviewer.filename: ', self.filename, type(self.filename))
+            self.open_file_h5()
 
     @pyqtSlot()
-    def open_file(self):
+    def open_file_h5(self):
+        """
+        Checks if there is more than one dataset within the file (:attr:`filename`) to open; if yes, opens instance of
+        :class:`SelectBox` which lets user select a dataset and will call :meth:`read_data`, if no, creates instance
+        of :class:`~imageviewer.fileHandling.GetFileContentH5` which will run in a new thread to get the data within
+        the file.
+        """
         if len(self.filename) > 1:
-            # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
+            # When there is more than one dataset: extra window (select_box) opens, which allows user to choose a
             # dataset:
-            self.select_box.show()
             for name in self.filename:
                 self.select_box.listWidget.addItem(name)
-                # When user chooses dataset in the select_box, read_data() is called.
+            # When user chooses dataset in the select_box, read_data() is called.
+            self.select_box.show()
         else:
-            # New Thread is started by creating an instance of GetFileContent/QRunnable and passing it to
+            # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
             # QThreadPool.start():
-            get_file_content_thread = GetFileContent(self.filename, self.filename)
-            get_file_content_thread.signals.dataAdded.connect(self.add_data)
+            get_file_content_thread = GetFileContentH5(self.filename, self.filename)
+            get_file_content_thread.signals.add_data.connect(self.add_data)
             get_file_content_thread.signals.finished.connect(self.done)
             self.threadpool.start(get_file_content_thread)
             self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
 
+    @pyqtSlot()
+    def browse_folder_dcm(self):
+        """
+        Opens a file dialog for selecting a dicom folder. Once a folder is selected, it is stored in :attr:`~directory`.
+        If there is more than one file present within this directory (which is usually the case), a new thread,
+        started by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`, will sort the files into datasets. Once
+        sorting is done, it will call :meth:`open_file_dicom`.
+        """
+        directory = QtWidgets.QFileDialog.getExistingDirectory(caption="Pick a folder")
+        if directory:
+            self.directory = directory + '/'
+            print('imageviewer.directory: ', directory, type(directory))
+            # Getting all dcm filenames directly in folder:
+            filenames = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f)) and '.dcm' in f.lower()]
+            print('Number of files: ', len(filenames))
+
+            if len(filenames) > 1:
+                identify_datasets_thread = IdentifyDatasetsDicom(filenames)
+                identify_datasets_thread.signals.setsIdentified.connect(self.open_file_dicom)
+                self.threadpool.start(identify_datasets_thread)
+                self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
+            # TODO: else statement. Also implement solution for case where there is one dataset.
+
+    @pyqtSlot(object)
+    def open_file_dicom(self, file_sets):
+        """
+        Checks if there is more than one dataset within the :paramref:`file_sets` and opens instance of
+        :class:`SelectBox` which lets user select a dataset.
+
+        It sets :attr:`~ImageViewer.dicom_sets` to :paramref:`file_sets` and :attr:`~filename` to a list of the names
+        of the first files of each fileset. These names will then stand for the set the file belongs to respectively.
+
+        :param file_sets: A list that contains a list with the names of all files of a fileset for each fileset.
+        :type file_sets: list[list[str]]
+        """
+        self.filename = [f_set[0] for f_set in file_sets]
+        print('imageviewer.filename[0]: ', self.filename[0], type(self.filename[0]))
+        self.dicom_sets = file_sets
+        print(self.filename)
+        if len(self.filename) > 1:
+            # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
+            # dataset:
+            for name in self.filename:
+                self.select_box.listWidget.addItem(name)
+            # When user chooses dataset in the select_box, read_data() is called.
+            self.select_box.show()
+        # TODO: else statement.
 
     @pyqtSlot()
-    ### A Slot(Function) to read in the data, selected in the UI
     def read_data(self):
+        """
+        Checks if the file selected via :class:`SelectBox` is of type h5 or dicom and starts the matching thread (
+        :class:`~imageviewer.fileHandling.GetFileContentH5` or :class:`~imageviewer.fileHandling.GetFileContentDicom`)
+        to load the data.
+        """
         self.select_box.confirm()
-        get_file_content_thread = GetFileContent(self.filename, self.select_box.selected)
-        get_file_content_thread.signals.dataAdded.connect(self.add_data)
+        if isinstance(self.filename, h5py._hl.files.File):
+            print('.h5 file encountered - create according thread.')
+            get_file_content_thread = GetFileContentH5(self.filename, self.select_box.selected)
+        else:
+            print('.dcm file encountered - create according thread.')
+            print('Directory: ', self.directory)
+            get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
+        get_file_content_thread.signals.add_data.connect(self.add_data)
         get_file_content_thread.signals.finished.connect(self.done)
         # get_file_content_thread.signals.finished.connect(self.plot_data)
         self.threadpool.start(get_file_content_thread)
@@ -107,64 +201,77 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     @pyqtSlot(object)
     def add_data(self, data):
-        self.handle_data.add_data(data)
+        """
+        Hands the data over to :class:`DataHandling` to store it appropriately.
+
+        :param data: Image data from file.
+        :type data: numpy.ndarray
+        """
+        self.data_handling.add_data(data)
 
     @pyqtSlot()
     def done(self):
+        """
+        As of now, this only calls :meth:`plot_data`. Maybe in the future this will fulfill a certain purpose,
+        therefore it is kept for now.
+        """
         self.plot_data()
 
     @pyqtSlot()
     def change_cmap(self):
+        """
+        Is called when user changes the colormap. Sets :attr:`cmap` to selected colormap and calls
+        :meth:`plot_data_if_data`.
+        """
         self.cmap = self.menuColormap.sender().text().lower()
         self.plot_data_if_data()
 
     @pyqtSlot()
     def plot_data_if_data(self):
         """
-        This function calls the function plot_data() if any data is given in self.handle_data.data,
-        else it does nothing.
-        :return: None
+        This method calls :meth:`plot_data` if any image data is given in :attr:`data_handling.data`, else it does
+        nothing.
         """
-        if isinstance(self.handle_data.data, np.ndarray):
+        if isinstance(self.data_handling.data, np.ndarray):
             self.plot_data()
 
     @pyqtSlot()
     def plot_data(self):
         """
+        Responsible for plotting the image data correctly.
+
         This function checks if there is data stored as slices or one slice only and plots the data accordingly on the
-        mplwidget of self. It also sets the slice label's text.
-        :return: None
+        :attr:`mplwidget`. It also sets :attr:`slice_label`'s text.
         """
-        print('Called plot function.')
+        # print('Called plot function.')
         # Clearing Axes, setting title:
-        if isinstance(self.handle_data.data, np.ndarray):
-            self.mplwidget.canvas.axes.clear()
-            self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
+        self.mplwidget.canvas.axes.clear()
+        self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
 
         # Checking if a single slice or multiple are in data:
-        if isinstance(self.handle_data.magn_slices, np.ndarray):
+        if isinstance(self.data_handling.magn_slices, np.ndarray):
             # Multiple slices of data:
-            if self.slice >= self.handle_data.magn_slices.shape[0]:
+            if self.slice >= self.data_handling.magn_slices.shape[0]:
                 # Index would be out of range:
                 # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
                 # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
-                self.slice = self.handle_data.magn_slices.shape[0] - 1
+                self.slice = self.data_handling.magn_slices.shape[0] - 1
 
             if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.handle_data.magn_slices[self.slice, :, :], cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_slices[self.slice, :, :], cmap=self.cmap)
             elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.handle_data.phase_slices[self.slice, :, :], cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_slices[self.slice, :, :], cmap=self.cmap)
 
-            self.slice_label.setText(f'Slice {self.slice + 1}/{self.handle_data.magn_slices.shape[0]}')
+            self.slice_label.setText(f'Slice {self.slice + 1}/{self.data_handling.magn_slices.shape[0]}')
 
-        elif isinstance(self.handle_data.magn_values, np.ndarray):
+        elif isinstance(self.data_handling.magn_values, np.ndarray):
             # Only one slice of data:
             if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.handle_data.magn_values, cmap=self.cmap)
-                # im_magn = self.mplwidget_left.canvas.axes.imshow(self.handle_data.magn_values)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_values, cmap=self.cmap)
+                # im_magn = self.mplwidget_left.canvas.axes.imshow(self.data_handling.magn_values)
                 # self.mplwidget_left.canvas.colorbar(im_magn)
             elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.handle_data.phase_values, cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_values, cmap=self.cmap)
 
             self.slice_label.setText(f'Slice 1/1')
 
@@ -174,55 +281,52 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
-### Seperate Window for selection of a data-set within the h5 file
-    def __init__(self, parent=None):
+    """
+    Window for selecting the desired dataset within an h5 file or dicom folder.
+
+    :ivar selected: Name of the selected file within the UI window.
+    :vartype selected: str
+    """
+    def __init__(self):
         super().__init__()
         self.setupUi(self)
         self.buttonCancel.clicked.connect(self.cancel)
-        self.selected = []
+        self.selected = None
 
     @pyqtSlot()
     def cancel(self):
-        self.selected = []
+        """
+        Closes the window and sets :attr:`~SelectBox.selected` back to `None`.
+        """
+        self.selected = None
         self.hide()
         self.listWidget.clear()
 
     def confirm(self):
-        self.selected = []
-        for item in self.listWidget.selectedItems():
-            self.selected.append(item.text())
+        """
+        Stores the name of the selected dataset in :attr:`SelectBox.selected` and closes the window.
+        """
+        item = self.listWidget.selectedItems()[0]
+        self.selected = item.text()
         self.listWidget.clear()
         self.hide()
 
 
-class GetFileContent(QRunnable):
+class DataHandling:
     """
-    Handling file input ||| Will be called in a separate thread
+    Image data is stored in this class sorted by magnitude and phase.
+
+    :ivar data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
+    :vartype data: numpy.ndarray
+    :ivar magn_values: The magnitude values of the image data if only one slice is present, else it is 0.
+    :vartype magn_values: numpy.ndarray
+    :ivar phase_values: The phase values of the image data if only one slice is present, else it is 0.
+    :vartype phase_values: numpy.ndarray
+    :ivar magn_slices: The magnitude values of the image data if multiple slices are present, else it is 0.
+    :vartype magn_slices: numpy.ndarray
+    :ivar phase_slices: The phase values of the image data if multiple slices are present, else it is 0.
+    :vartype phase_slices: numpy.ndarray
     """
-    def __init__(self, filename, entries, *args, **kwargs):
-        super().__init__()
-        self.filename = filename
-        self.entries = entries
-        self.signals = FileSignals()
-
-    def run(self):
-        for name in self.entries:
-            self.signals.dataAdded.emit(self.filename[name][()])  # old: self.filename[name].value
-        self.signals.finished.emit()
-
-
-class FileSignals(QObject):
-    """
-    Class for generating thread signals for GetFileContent()
-    http://pyqt.sourceforge.net/Docs/PyQt5/signals_slots.html#defining-new-signals-with-pyqtsignal
-    New signals can be defined as class attributes using the pyqtSignal() factory.
-    New signals should only be defined in sub-classes of QObject.
-    """
-    finished = pyqtSignal()
-    dataAdded = pyqtSignal(object)
-
-
-class DataHandling():
     def __init__(self):
         self.data = 0
 
@@ -233,15 +337,27 @@ class DataHandling():
         self.phase_slices = 0
 
     def add_data(self, data):
+        """
+        This function takes the data from a loaded file, processes it, and stores it in the right instance attributes.
+
+        The data gets squeezed in order to remove any unnecessary dimension.
+        After that the number of dimensions gets checked. If 2, the data contains only one slice and gets stored in
+        :attr:`magn_values` and :attr:`phase_values`, if 3, the data contains multiple slices and gets stored in
+        :attr:`magn_slices` and :attr:`phase_slices`.
+
+        :param data: Image data loaded from file.
+        :type data: numpy.ndarray
+        """
         # Removing unnecessary dimension; is there data where there is more than 1 dimension to be removed?
         self.data = np.squeeze(data)
-        # print(f'Shape original: {data.shape}')
-        # print(f'Shape squeezed: {self.data.shape} \n')
-        # print(f'Type: {type(self.data)}')
-        # print(f'DType: {self.data.dtype}')
-        # print(f'Dimensions: {self.data.ndim}')
+        print(f'Type original: {type(data)}')
+        print(f'Shape original: {data.shape}')
+        print(f'Shape squeezed: {self.data.shape}')
+        print(f'Type: {type(self.data)}')
+        print(f'DType: {self.data.dtype}')
+        print(f'Dimensions: {self.data.ndim}')
 
-        if self.data.ndim < 3:
+        if self.data.ndim == 2:
             # Data is just one slice
             self.magn_values = np.abs(self.data)
             self.phase_values = np.angle(self.data)
@@ -263,6 +379,9 @@ class DataHandling():
             self.phase_values = 0
 
     def clear_data(self):
+        """
+        Sets all attributes back to 0 as they were after initialization.
+        """
         self.data = 0
         self.magn_values = 0
         self.phase_values = 0
@@ -270,6 +389,9 @@ class DataHandling():
         self.phase_slices = 0
 
     def show_data(self):
+        """
+        Prints type and shape of :attr:`data`.
+        """
         print('Data Type  ', type(self.data))
         print('Data Shape  ', self.data.shape)
 

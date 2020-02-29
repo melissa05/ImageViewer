@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'selectBox.ui'
 #
-# Created by: PyQt5 UI code generator 5.9
+# Created by: PyQt5 UI code generator 5.9.2
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -17,6 +17,8 @@ class Ui_MainWindow(object):
         self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
         self.verticalLayout.setObjectName("verticalLayout")
         self.listWidget = QtWidgets.QListWidget(self.centralwidget)
+        self.listWidget.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.listWidget.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
         self.listWidget.setObjectName("listWidget")
         self.verticalLayout.addWidget(self.listWidget)
         self.horizontalLayout = QtWidgets.QHBoxLayout()

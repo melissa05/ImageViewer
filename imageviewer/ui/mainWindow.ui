@@ -115,7 +115,8 @@
     <property name="title">
      <string>Main</string>
     </property>
-    <addaction name="actionOpen"/>
+    <addaction name="actionOpen_h5"/>
+    <addaction name="actionOpen_dcm"/>
     <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
@@ -131,9 +132,12 @@
    <addaction name="menuColormap"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
-  <action name="actionOpen">
+  <action name="actionOpen_h5">
    <property name="text">
-    <string>Open</string>
+    <string>Open .h5 File</string>
+   </property>
+   <property name="toolTip">
+    <string>Lets you select a .h5 file.</string>
    </property>
   </action>
   <action name="actionQuit">
@@ -144,6 +148,14 @@
   <action name="actionTest">
    <property name="text">
     <string>test</string>
+   </property>
+  </action>
+  <action name="actionOpen_dcm">
+   <property name="text">
+    <string>Open DICOM</string>
+   </property>
+   <property name="toolTip">
+    <string>Lets you select a folder with DCM files.</string>
    </property>
   </action>
   <actiongroup name="groupColormap">

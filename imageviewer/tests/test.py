@@ -68,8 +68,8 @@ class TestImageViewer(unittest.TestCase):
 #         self.viewer.filename = h5py.File('data/defined_8_8_one_set.h5')
 #         print(self.viewer.filename, type(self.viewer.filename))
 #         self.viewer.open_file()
-#         self.assertNotEqual(self.viewer.handle_data.magn_values, 0)
-#         self.assertNotEqual(self.viewer.handle_data.data, 0)
+#         self.assertNotEqual(self.viewer.data_handling.magn_values, 0)
+#         self.assertNotEqual(self.viewer.data_handling.data, 0)
 
 
 class TestAddData(unittest.TestCase):
@@ -102,18 +102,18 @@ class TestAddData(unittest.TestCase):
         self.viewer.add_data(data=data)
 
         # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.handle_data.data, data,
+        npt.assert_array_equal(self.viewer.data_handling.data, data,
                                err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.magn_values, [[0, 2**0.5 * b],
-                                                                            [2**0.5 * c, 2**0.5 * d]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[0, 2 ** 0.5 * b],
+                                                                              [2**0.5 * c, 2**0.5 * d]],
                                       err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.phase_values, [[0, math.radians(45)],
-                                                                             [math.radians(45), math.radians(45)]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[0, math.radians(45)],
+                                                                               [math.radians(45), math.radians(45)]],
                                       err_msg='Phase failed.')
 
         # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.handle_data.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.handle_data.phase_slices, 0, 'Phase Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
 
     def test_same_real_and_imag_2x2_float(self):
         """
@@ -134,18 +134,18 @@ class TestAddData(unittest.TestCase):
         self.viewer.add_data(data=data)
 
         # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.handle_data.data, data,
+        npt.assert_array_equal(self.viewer.data_handling.data, data,
                                err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.magn_values, [[2**0.5 * a, 2**0.5 * b],
-                                                                            [2**0.5 * c, 2**0.5 * d]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[2 ** 0.5 * a, 2 ** 0.5 * b],
+                                                                              [2**0.5 * c, 2**0.5 * d]],
                                       err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.phase_values, [[math.radians(45), math.radians(45)],
-                                                                             [math.radians(45), math.radians(45)]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[math.radians(45), math.radians(45)],
+                                                                               [math.radians(45), math.radians(45)]],
                                       err_msg='Phase failed.')
 
         # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.handle_data.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.handle_data.phase_slices, 0, 'Phase Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
 
     def test_same_real_and_imag_2x3_float(self):
         """
@@ -169,20 +169,20 @@ class TestAddData(unittest.TestCase):
         self.viewer.add_data(data=data)
 
         # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.handle_data.data, data,
+        npt.assert_array_equal(self.viewer.data_handling.data, data,
                                err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.magn_values, [[2**0.5 * a, 2**0.5 * b],
-                                                                            [2**0.5 * c, 2**0.5 * d],
-                                                                            [2**0.5 * e, 2**0.5 * f]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[2 ** 0.5 * a, 2 ** 0.5 * b],
+                                                                              [2**0.5 * c, 2**0.5 * d],
+                                                                              [2**0.5 * e, 2**0.5 * f]],
                                       err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.phase_values, [[math.radians(45), math.radians(45)],
-                                                                             [math.radians(45), math.radians(45)],
-                                                                             [math.radians(45), math.radians(45)]],
+        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[math.radians(45), math.radians(45)],
+                                                                               [math.radians(45), math.radians(45)],
+                                                                               [math.radians(45), math.radians(45)]],
                                       err_msg='Phase failed.')
 
         # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.handle_data.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.handle_data.phase_slices, 0, 'Phase Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
 
     def test_different_real_and_imag_2x2_float(self):
         """
@@ -205,18 +205,18 @@ class TestAddData(unittest.TestCase):
         self.viewer.add_data(data=data)
 
         # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.handle_data.data, data,
+        npt.assert_array_equal(self.viewer.data_handling.data, data,
                                err_msg='Data failed.')
         result_magn = np.array([[(a*a+b*b)**0.5, (b*b+c*c)**0.5],
                                 [(c*c+a*a)**0.5, (d*d+a*a)**0.5]])
         result_phase = np.array([[np.angle(a+1j*b), np.angle(b+1j*c)],
                                  [np.angle(c+1j*a), np.angle(d+1j*a)]])
-        npt.assert_array_almost_equal(self.viewer.handle_data.magn_values, result_magn, err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.phase_values, result_phase, err_msg='Phase failed.')
+        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, result_magn, err_msg='Magnitude failed.')
+        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, result_phase, err_msg='Phase failed.')
 
         # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.handle_data.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.handle_data.phase_slices, 0, 'Phase Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
+        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
 
     ### 3-dimensional tests, multiple slices of data
     def test_different_real_and_imag_3_2x2_float(self):
@@ -240,7 +240,7 @@ class TestAddData(unittest.TestCase):
         self.viewer.add_data(data=data)
 
         # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.handle_data.data, data,
+        npt.assert_array_equal(self.viewer.data_handling.data, data,
                                err_msg='Data failed.')
         arr_m = np.array([[(a*a+b*b)**0.5, (b*b+c*c)**0.5],
                           [(c*c+a*a)**0.5, (d*d+a*a)**0.5]])
@@ -248,12 +248,12 @@ class TestAddData(unittest.TestCase):
                           [np.angle(c+1j*a), np.angle(d+1j*a)]])
         magn_should = np.repeat(arr_m[np.newaxis, :, :], 3, axis=0)
         phase_should = np.repeat(arr_p[np.newaxis, :, :], 3, axis=0)
-        npt.assert_array_almost_equal(self.viewer.handle_data.magn_slices, magn_should, err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.handle_data.phase_slices, phase_should, err_msg='Phase failed.')
+        npt.assert_array_almost_equal(self.viewer.data_handling.magn_slices, magn_should, err_msg='Magnitude failed.')
+        npt.assert_array_almost_equal(self.viewer.data_handling.phase_slices, phase_should, err_msg='Phase failed.')
 
         # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.handle_data.magn_values, 0, 'Magnitude Values not 0.')
-        self.assertEqual(self.viewer.handle_data.phase_values, 0, 'Phase Values not 0.')
+        self.assertEqual(self.viewer.data_handling.magn_values, 0, 'Magnitude Values not 0.')
+        self.assertEqual(self.viewer.data_handling.phase_values, 0, 'Phase Values not 0.')
 
 
 def create_custom_complex_2dim_data(real, imaginary):
