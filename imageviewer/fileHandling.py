@@ -84,12 +84,17 @@ class GetFileContentDicom(GetFileContent):
         for file_set in self.file_sets:
             if file_set[0] == self.selected:
                 # First file within dataset is used for getting the numbers of rows and columns, and type of the data:
+                # metadata = pydicom.filereader.dcmread(self.directory + file_set[0])
+                # print('Patient name: ', metadata.PatientName, '   Type: ', type(str(metadata.PatientName)))
+                # print('Patient age: ', metadata.PatientAge, '   Type: ', type(metadata.PatientAge))
+                # print('Patient sex: ', metadata.PatientSex, '   Type: ', type(metadata.PatientSex))
+                # print('Acquisition date: ', metadata.AcquisitionDate, '   Type: ', type(metadata.AcquisitionDate))
                 ref_data_dcm = pydicom.read_file(self.directory + file_set[0])
                 data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns),
                                 dtype=ref_data_dcm.pixel_array.dtype)
-                for data_dcm in file_set:
-                    slice_ = pydicom.read_file(self.directory + data_dcm)
-                    data[file_set.index(data_dcm), :, :] = slice_.pixel_array
+                for filename in file_set:
+                    slice_ = pydicom.read_file(self.directory + filename)
+                    data[file_set.index(filename), :, :] = slice_.pixel_array
 
         self.signals.add_data.emit(data)
         self.signals.finished.emit()
@@ -141,7 +146,7 @@ class IdentifyDatasetsDicom(QRunnable):
                     # Loop is at last iteration, the current f_set is complete and the last set.
                     file_sets.append(f_set)
 
-        print('Number of sets: ', len(file_sets))
+        # print('Number of sets: ', len(file_sets))
         self.signals.setsIdentified.emit(file_sets)
 
 

@@ -7,7 +7,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtTest import QTest
 from PyQt5.QtCore import Qt
 
-from imageviewer.main import ImageViewer, DataHandling
+from imageviewer.main import *
 
 
 app = QApplication([])
@@ -15,15 +15,14 @@ app = QApplication([])
 
 class TestImageViewer(unittest.TestCase):
     """
-    Class for testing basic settings and behaviour of the ImageViewer class.
+    Class for testing basic settings and behaviour of the :class:`~imageviewer.main.ImageViewer` class.
     """
     def setUp(self):
         self.viewer = ImageViewer()
 
     def test_defaults(self):
         """
-        Test default values that should be set when creating an instance of ImageViewer.
-        :return: None.
+        Test default values that should be set when creating an instance of :class:`~imageviewer.main.ImageViewer`.
         """
         # Direct attributes:
         self.assertEqual(self.viewer.filename, '')
@@ -41,7 +40,6 @@ class TestImageViewer(unittest.TestCase):
         """
         Test setting different colormap by triggering action in menuColormap.
         Only one action should be checked at a time.
-        :return:
         """
         self.viewer.actionViridis.trigger()
         self.assertTrue(self.viewer.actionViridis.isChecked())
@@ -74,8 +72,9 @@ class TestImageViewer(unittest.TestCase):
 
 class TestAddData(unittest.TestCase):
     """
-    Class for testing add_data() method of the ImageViewer class, which simply calls the add_data() method of the
-    DataHandling class.
+    Class for testing :meth:`~imageviewer.main.ImageViewer.add_data` method of the
+    :class:`~imageviewer.main.ImageViewer` class, which simply calls the
+    :meth:`~imageviewer.main.DataHandling.add_data` method of the :class:`~imageviewer.main.DataHandling` class.
 
     I am not sure if these kinds of tests make much sense, since in the tested functions only numpy functions are called
     and nothing should go wrong by that.

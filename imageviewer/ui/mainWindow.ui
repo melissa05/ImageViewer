@@ -6,99 +6,162 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>698</width>
-    <height>588</height>
+    <width>701</width>
+    <height>612</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QGridLayout" name="gridLayout">
-    <item row="0" column="0">
-     <widget class="QLabel" name="label">
-      <property name="text">
-       <string>Show:</string>
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QSplitter" name="splitter">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
       </property>
-     </widget>
-    </item>
-    <item row="1" column="0" colspan="9">
-     <layout class="QHBoxLayout" name="horizontalLayout">
-      <item>
-       <widget class="MplWidget" name="mplwidget" native="true">
-        <property name="mouseTracking">
-         <bool>false</bool>
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <widget class="QLabel" name="label_name">
+       <property name="text">
+        <string>Name:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_name_value">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>-</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_age">
+       <property name="text">
+        <string>Age:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_age_value">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>50</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>-</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_sex">
+       <property name="text">
+        <string>Sex:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_sex_value">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>50</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>-</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_date">
+       <property name="text">
+        <string>Date:</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_date_value">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <horstretch>1</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>60</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>----/--/--</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_slice">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>80</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>Slice: -/-</string>
+       </property>
+      </widget>
+      <widget class="QLabel" name="label_show">
+       <property name="text">
+        <string>Show:</string>
+       </property>
+      </widget>
+      <widget class="QComboBox" name="comboBox_magn_phase">
+       <item>
+        <property name="text">
+         <string comment="magnitude">Magnitude</string>
         </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
-    <item row="0" column="1">
-     <widget class="QComboBox" name="comboBox_magn_phase">
-      <item>
-       <property name="text">
-        <string comment="magnitude">Magnitude</string>
-       </property>
-      </item>
-      <item>
-       <property name="text">
-        <string comment="phase">Phase</string>
-       </property>
-      </item>
+       </item>
+       <item>
+        <property name="text">
+         <string comment="phase">Phase</string>
+        </property>
+       </item>
+      </widget>
      </widget>
     </item>
-    <item row="0" column="2">
-     <spacer name="horizontalSpacer_3">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+    <item>
+     <widget class="MplWidget" name="mplwidget" native="true">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
       </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>125</width>
-        <height>19</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
-    <item row="0" column="3">
-     <widget class="QSlider" name="horizontalSlider">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+      <property name="mouseTracking">
+       <bool>false</bool>
       </property>
      </widget>
-    </item>
-    <item row="0" column="8">
-     <spacer name="horizontalSpacer">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>204</width>
-        <height>19</height>
-       </size>
-      </property>
-     </spacer>
-    </item>
-    <item row="0" column="7">
-     <widget class="QLabel" name="slice_label">
-      <property name="text">
-       <string>Slice -/-</string>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="4" colspan="2">
-     <spacer name="horizontalSpacer_2">
-      <property name="orientation">
-       <enum>Qt::Horizontal</enum>
-      </property>
-      <property name="sizeHint" stdset="0">
-       <size>
-        <width>37</width>
-        <height>19</height>
-       </size>
-      </property>
-     </spacer>
     </item>
    </layout>
   </widget>
@@ -107,7 +170,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>698</width>
+     <width>701</width>
      <height>21</height>
     </rect>
    </property>
