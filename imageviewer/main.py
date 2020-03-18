@@ -5,6 +5,7 @@ import pydicom
 from PyQt5.QtCore import QThreadPool, pyqtSlot
 from PyQt5 import QtWidgets
 import numpy as np
+from matplotlib.widgets import RectangleSelector
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
 from imageviewer.ui import mainWindow, selectBox
@@ -54,6 +55,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         self.menuColormap.triggered.connect(self.change_cmap)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.plot_data_if_data)
+
+        self.mplwidget.signals.position_detected.connect(self.set_statistic_labels)
 
         # Generate Selection UI:
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
@@ -302,7 +305,12 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         This function checks if there is data stored as slices or one slice only and plots the data accordingly on the
         :attr:`mplwidget`. It also sets :attr:`slice_label`'s text.
         """
-        # print('Called plot function.')
+
+        def format_coord(x, y):
+            col = int(x + 0.5)
+            row = int(y + 0.5)
+            return f'x={col}, y={row}'
+
         # Clearing Axes, setting title:
         self.mplwidget.canvas.axes.clear()
         self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
@@ -317,26 +325,62 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 self.slice = self.data_handling.magn_slices.shape[0] - 1
 
             if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_slices[self.slice, :, :], cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_slices[self.slice, :, :], cmap=self.cmap,
+                                                  interpolation='none')
             elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_slices[self.slice, :, :], cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_slices[self.slice, :, :], cmap=self.cmap,
+                                                  interpolation='none')
 
             self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.magn_slices.shape[0]}')
 
         elif isinstance(self.data_handling.magn_values, np.ndarray):
             # Only one slice of data:
             if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_values, cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_values, cmap=self.cmap,
+                                                  interpolation='none')
                 # im_magn = self.mplwidget_left.canvas.axes.imshow(self.data_handling.magn_values)
                 # self.mplwidget_left.canvas.colorbar(im_magn)
             elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_values, cmap=self.cmap)
+                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_values, cmap=self.cmap,
+                                                  interpolation='none')
 
             self.label_slice.setText(f'Slice 1/1')
 
         self.mplwidget.canvas.axes.axis('off')
 
+        self.mplwidget.canvas.axes.format_coord = format_coord
         self.mplwidget.canvas.draw()
+        self.mplwidget.empty = False
+        self.mplwidget.rectangular_selection()
+
+    @pyqtSlot(tuple, tuple)
+    def set_statistic_labels(self, startposition, endposition):
+        start = tuple(int(i) for i in startposition)
+        end = tuple(int(i) for i in endposition)
+        print(f'This mf is working!!! Start position is {start}, end position is {end}. Great!')
+
+        if isinstance(self.data_handling.magn_slices, np.ndarray):
+            if self.comboBox_magn_phase.currentText() == 'Magnitude':
+                mean = np.mean(self.data_handling.magn_slices[self.slice, start[1]:end[1], start[0]:end[0]])
+                std = np.std(self.data_handling.magn_slices[self.slice, start[1]:end[1], start[0]:end[0]])
+            elif self.comboBox_magn_phase.currentText() == 'Phase':
+                mean = np.mean(self.data_handling.phase_slices[self.slice, start[1]:end[1], start[0]:end[0]])
+                std = np.std(self.data_handling.phase_slices[self.slice, start[1]:end[1], start[0]:end[0]])
+
+        elif isinstance(self.data_handling.magn_values, np.ndarray):
+            # Only one slice of data:
+            if self.comboBox_magn_phase.currentText() == 'Magnitude':
+                mean = np.mean(self.data_handling.magn_values[start[1]:end[1], start[0]:end[0]])
+                std = np.std(self.data_handling.magn_values[start[1]:end[1], start[0]:end[0]])
+            elif self.comboBox_magn_phase.currentText() == 'Phase':
+                mean = np.mean(self.data_handling.phase_values[start[1]:end[1], start[0]:end[0]])
+                std = np.std(self.data_handling.phase_values[start[1]:end[1], start[0]:end[0]])
+
+        # mean = np.mean(data)
+        # std = np.std(data)
+        self.label_mean_value.setText(str(format(mean, '.3e')))
+        self.label_std_value.setText(str(format(std, '.3e')))
+        print(f'Mean: {mean}, STD: {std}')
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
