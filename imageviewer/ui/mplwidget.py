@@ -13,14 +13,16 @@ class MplWidget(QWidget):
 
     :ivar canvas: The actual matplotlib figure canvas where data is plotted.
     :vartype canvas: :class:`matplotlib.backends.backend_qt5agg.FigureCanvasQTAgg`
+    :ivar empty: Indicates if canvas is empty.
+    :vartype empty: bool
     """
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
 
         self.signals = MplWidgetSignals()
 
-        self.empty = True
         self.canvas = FigureCanvas(Figure())
+        self.empty = True
         self.toolbar = NavigationToolbar(self.canvas, self)
 
         vertical_layout = QVBoxLayout()
@@ -33,23 +35,34 @@ class MplWidget(QWidget):
         self.setLayout(vertical_layout)
 
     def rectangular_selection(self):
-        self.rect_selector = RectangleSelector(self.canvas.axes, self.onselect, drawtype='box',
-                                               button=[1, 3],  # don't use middle button
+        """
+        This function simply enables rectangular selection by creating an instance of
+        :class:`matplotlib.widgets.RectangleSelector`.
+        """
+        self.rect_selector = RectangleSelector(self.canvas.axes, self.on_rect_select, drawtype='box',
+                                               button=[1],  # only left mouse button
                                                minspanx=5, minspany=5,
                                                spancoords='pixels',
                                                interactive=True)
 
         # self.canvas.mpl_connect('key_press_event', self.toggle_selector)
 
-    def onselect(self, eclick, erelease):
+    def on_rect_select(self, eclick, erelease):
+        """
+        Gets called when the user completes a rectangular selection and emits a signal with the start and endpoints
+        of the rectangle.
+
+        :param eclick: Matplotlib mouse click event, holds x and y coordinates.
+        :type eclick: :class:`matplotlib.backend_bases.MouseEvent`
+        :param erelease: Matplotlib mouse release event, holds x and y coordinates.
+        :type erelease: :class:`matplotlib.backend_bases.MouseEvent`
+        """
         if not self.empty:
-            'eclick and erelease are matplotlib events at press and release'
-            print(' startposition : (%f, %f)' % (eclick.xdata, eclick.ydata))
+            # eclick and erelease are matplotlib events at press and release
+            print(type(erelease))
             startposition = (eclick.xdata, eclick.ydata)
-            print(' endposition   : (%f, %f)' % (erelease.xdata, erelease.ydata))
             endposition = (erelease.xdata, erelease.ydata)
-            print(' used button   : ', eclick.button)
-            self.signals.position_detected.emit(startposition, endposition)
+            self.signals.positionDetected.emit(startposition, endposition)
 
     # def toggle_selector(self, event):
     #     if not self.empty:
@@ -63,4 +76,7 @@ class MplWidget(QWidget):
 
 
 class MplWidgetSignals(QObject):
-    position_detected = pyqtSignal(tuple, tuple)
+    """
+    Class for generating thread signals for the :class:`MplWidget` class.
+    """
+    positionDetected = pyqtSignal(tuple, tuple)

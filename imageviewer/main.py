@@ -5,7 +5,6 @@ import pydicom
 from PyQt5.QtCore import QThreadPool, pyqtSlot
 from PyQt5 import QtWidgets
 import numpy as np
-from matplotlib.widgets import RectangleSelector
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
 from imageviewer.ui import mainWindow, selectBox
@@ -30,6 +29,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     :vartype slice: int
     :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
     :vartype cmap: str
+    :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
+    :vartype magnitude: bool
     :ivar select_box: Window which lets user select a dataset within a selected file/directory.
     :vartype select_box: :class:`SelectBox`
     :ivar data_handling: Data is being processed and stored here.
@@ -47,6 +48,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.dicom_sets = []
         self.slice = 0
         self.cmap = 'plasma'
+        self.magnitude = True
 
         # Connect UI signals to slots (functions):
         self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
@@ -54,7 +56,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.actionQuit.triggered.connect(self.close)
 
         self.menuColormap.triggered.connect(self.change_cmap)
-        self.comboBox_magn_phase.currentIndexChanged.connect(self.plot_data_if_data)
+        self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
 
         self.mplwidget.signals.position_detected.connect(self.set_statistic_labels)
 
@@ -76,10 +78,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         turn in the y direction of the mousewheel into one slice difference.
         This function only does something if there are data slices given.
 
-        :param event: The wheel event.
-        :type event: QWheelEvent
+        :param event: The wheel event which contains parameters that describe a wheel event.
+        :type event: :class:`QtGui.QWheelEvent`
         """
-        if isinstance(self.data_handling.magn_slices, np.ndarray):
+        if isinstance(self.data_handling.active_data, np.ndarray):
             # print(self.slice)
             # print(event.angleDelta().y())
 
@@ -264,12 +266,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     @pyqtSlot(object)
     def add_data(self, data):
         """
-        Hands the data over to :class:`DataHandling` to store it appropriately.
+        Hands the data over to :class:`DataHandling` to store it appropriately by calling it's method
+        :meth:`~DataHandling.add_data`.
 
         :param data: Image data from file.
         :type data: numpy.ndarray
         """
-        self.data_handling.add_data(data)
+        self.data_handling.add_data(data, self.magnitude)
 
     @pyqtSlot()
     def done(self):
@@ -289,64 +292,62 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.plot_data_if_data()
 
     @pyqtSlot()
+    def change_magn_phase(self):
+        """
+        Is called when user changes the value of the comboBox in the GUI regarding magnitude and phase. Sets
+        :attr:`magnitude` to True when user selected Magnitude, sets it to False when user selected Phase.
+        """
+        if self.comboBox_magn_phase.currentText() == 'Magnitude':
+            self.magnitude = True
+        elif self.comboBox_magn_phase.currentText() == 'Phase':
+            self.magnitude = False
+        else:
+            raise Exception(f'Invalid text of ImageViewer.comboBox_magn_phase: {self.comboBox_magn_phase.currentText()}')
+
+        self.data_handling.change_active_data(self.magnitude)
+
+        self.plot_data_if_data()
+
+    @pyqtSlot()
     def plot_data_if_data(self):
         """
-        This method calls :meth:`plot_data` if any image data is given in :attr:`data_handling.data`, else it does
-        nothing.
+        This method calls :meth:`plot_data` if any image data is given in :attr:`data_handling.active_data`,
+        else it does nothing.
         """
-        if isinstance(self.data_handling.data, np.ndarray):
+        if isinstance(self.data_handling.active_data, np.ndarray):
             self.plot_data()
 
     @pyqtSlot()
     def plot_data(self):
         """
-        Responsible for plotting the image data correctly.
+        Responsible for plotting the image data.
 
-        This function checks if there is data stored as slices or one slice only and plots the data accordingly on the
-        :attr:`mplwidget`. It also sets :attr:`slice_label`'s text.
+        This function plots the data stored in :attr:`data_handling.active_data` on the :attr:`mplwidget`. It also
+        sets :attr:`slice_label`'s text and changes :attr:`slice` to a lower value if needed.
         """
-
-        def format_coord(x, y):
-            col = int(x + 0.5)
-            row = int(y + 0.5)
-            return f'x={col}, y={row}'
-
         # Clearing Axes, setting title:
         self.mplwidget.canvas.axes.clear()
         self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
 
-        # Checking if a single slice or multiple are in data:
-        if isinstance(self.data_handling.magn_slices, np.ndarray):
-            # Multiple slices of data:
-            if self.slice >= self.data_handling.magn_slices.shape[0]:
-                # Index would be out of range:
-                # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
-                # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
-                self.slice = self.data_handling.magn_slices.shape[0] - 1
+        if self.slice >= self.data_handling.active_data.shape[0]:
+            # Index would be out of range:
+            # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
+            # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
+            self.slice = self.data_handling.active_data.shape[0] - 1
 
-            if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_slices[self.slice, :, :], cmap=self.cmap,
-                                                  interpolation='none')
-            elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_slices[self.slice, :, :], cmap=self.cmap,
-                                                  interpolation='none')
-
-            self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.magn_slices.shape[0]}')
-
-        elif isinstance(self.data_handling.magn_values, np.ndarray):
-            # Only one slice of data:
-            if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.magn_values, cmap=self.cmap,
-                                                  interpolation='none')
-                # im_magn = self.mplwidget_left.canvas.axes.imshow(self.data_handling.magn_values)
-                # self.mplwidget_left.canvas.colorbar(im_magn)
-            elif self.comboBox_magn_phase.currentText() == 'Phase':
-                self.mplwidget.canvas.axes.imshow(self.data_handling.phase_values, cmap=self.cmap,
-                                                  interpolation='none')
-
-            self.label_slice.setText(f'Slice 1/1')
-
+        self.mplwidget.canvas.axes.imshow(self.data_handling.active_data[self.slice, :, :], cmap=self.cmap,
+                                          interpolation='none')
         self.mplwidget.canvas.axes.axis('off')
+
+        self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
+
+        def format_coord(x, y):
+            """
+            Changes coordinates displayed in the matplotlib toolbar to integers, which represent data indices.
+            """
+            col = int(x + 0.5)
+            row = int(y + 0.5)
+            return f'x={col}, y={row}'
 
         self.mplwidget.canvas.axes.format_coord = format_coord
         self.mplwidget.canvas.draw()
@@ -355,32 +356,24 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     @pyqtSlot(tuple, tuple)
     def set_statistic_labels(self, startposition, endposition):
+        """
+        Calculates mean and std of the data within the rectangle defined by :paramref:`startposition` and
+        :paramref:`endposition` and changes the GUI labels's text values accordingly.
+
+        :param startposition: Coordinates of top left corner of rectangle.
+        :type startposition: tuple[numpy.float64]
+        :param endposition: Coordinates of bottom right corner of rectangle.
+        :type endposition: tuple[numpy.float64]
+        """
+        # (x, y) coordinates = (col, row) indices of start and end points of selected rectangle:
         start = tuple(int(i) for i in startposition)
         end = tuple(int(i) for i in endposition)
-        print(f'This mf is working!!! Start position is {start}, end position is {end}. Great!')
 
-        if isinstance(self.data_handling.magn_slices, np.ndarray):
-            if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                mean = np.mean(self.data_handling.magn_slices[self.slice, start[1]:end[1], start[0]:end[0]])
-                std = np.std(self.data_handling.magn_slices[self.slice, start[1]:end[1], start[0]:end[0]])
-            elif self.comboBox_magn_phase.currentText() == 'Phase':
-                mean = np.mean(self.data_handling.phase_slices[self.slice, start[1]:end[1], start[0]:end[0]])
-                std = np.std(self.data_handling.phase_slices[self.slice, start[1]:end[1], start[0]:end[0]])
+        mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
+        std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
 
-        elif isinstance(self.data_handling.magn_values, np.ndarray):
-            # Only one slice of data:
-            if self.comboBox_magn_phase.currentText() == 'Magnitude':
-                mean = np.mean(self.data_handling.magn_values[start[1]:end[1], start[0]:end[0]])
-                std = np.std(self.data_handling.magn_values[start[1]:end[1], start[0]:end[0]])
-            elif self.comboBox_magn_phase.currentText() == 'Phase':
-                mean = np.mean(self.data_handling.phase_values[start[1]:end[1], start[0]:end[0]])
-                std = np.std(self.data_handling.phase_values[start[1]:end[1], start[0]:end[0]])
-
-        # mean = np.mean(data)
-        # std = np.std(data)
         self.label_mean_value.setText(str(format(mean, '.3e')))
         self.label_std_value.setText(str(format(std, '.3e')))
-        print(f'Mean: {mean}, STD: {std}')
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
@@ -388,7 +381,7 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     Window for selecting the desired dataset within an h5 file or dicom folder.
 
     :ivar selected: Name of the selected file within the UI window.
-    :vartype selected: str
+    :vartype selected: None or str
     """
     def __init__(self):
         super().__init__()
@@ -407,7 +400,7 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
 
     def confirm(self):
         """
-        Stores the name of the selected dataset in :attr:`SelectBox.selected` and closes the window.
+        Stores the name of the selected dataset in :attr:`~SelectBox.selected` and closes the window.
         """
         item = self.listWidget.selectedItems()[0]
         self.selected = item.text()
@@ -419,40 +412,43 @@ class DataHandling:
     """
     Image data is stored in this class sorted by magnitude and phase.
 
-    :ivar data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
+    :ivar original_data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
     :vartype data: numpy.ndarray
-    :ivar magn_values: The magnitude values of the image data if only one slice is present, else it is 0.
-    :vartype magn_values: numpy.ndarray
-    :ivar phase_values: The phase values of the image data if only one slice is present, else it is 0.
-    :vartype phase_values: numpy.ndarray
-    :ivar magn_slices: The magnitude values of the image data if multiple slices are present, else it is 0.
+    :ivar magn_slices: The magnitude values of the image data.
     :vartype magn_slices: numpy.ndarray
-    :ivar phase_slices: The phase values of the image data if multiple slices are present, else it is 0.
+    :ivar phase_slices: The phase values of the image data.
     :vartype phase_slices: numpy.ndarray
+    :ivar active_data: Contains either magnitude or phase data, depending on :attr:`magnitude`.
+    :vartype active_data: numpy.ndarray
+    :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
+    :vartype magnitude: bool
     """
     def __init__(self):
-        self.data = 0
-
-        self.magn_values = 0
-        self.phase_values = 0
+        self.magnitude = True
+        self.original_data = 0
 
         self.magn_slices = 0
         self.phase_slices = 0
 
-    def add_data(self, data):
+        self.active_data = 0
+
+    def add_data(self, data, magnitude):
         """
         This function takes the data from a loaded file, processes it, and stores it in the right instance attributes.
 
-        The data gets squeezed in order to remove any unnecessary dimension.
-        After that the number of dimensions gets checked. If 2, the data contains only one slice and gets stored in
-        :attr:`magn_values` and :attr:`phase_values`, if 3, the data contains multiple slices and gets stored in
-        :attr:`magn_slices` and :attr:`phase_slices`.
+        The data gets squeezed in order to remove any unnecessary dimension. After that the number of dimensions gets
+        checked. If 2, the data contains only one slice and will be expanded by one dimension before being stored in
+        order to handle it the same as 3-dimensional data. If 3, the data contains multiple slices and gets stored in
+        :attr:`magn_slices` and :attr:`phase_slices` directly.
+        Depending on the value of :paramref:`magnitude`, the magnitude or phase data gets stored in :attr:`active_data`.
 
         :param data: Image data loaded from file.
         :type data: numpy.ndarray
+        :param magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
+        :type magnitude: bool
         """
         # Removing unnecessary dimension; is there data where there is more than 1 dimension to be removed?
-        self.data = np.squeeze(data)
+        self.original_data = np.squeeze(data)
         # print(f'Type original: {type(data)}')
         # print(f'Shape original: {data.shape}')
         # print(f'Shape squeezed: {self.data.shape}')
@@ -460,43 +456,53 @@ class DataHandling:
         # print(f'DType: {self.data.dtype}')
         # print(f'Dimensions: {self.data.ndim}')
 
-        if self.data.ndim == 2:
-            # Data is just one slice
-            self.magn_values = np.abs(self.data)
-            self.phase_values = np.angle(self.data)
-            self.magn_slices = 0
-            self.phase_slices = 0
-        elif self.data.ndim == 3:
+        if self.original_data.ndim == 2:
+            # Data is just one slice; we add an extra dimension so it can be handled like 3D data:
+            magn_values = np.abs(self.original_data)
+            phase_values = np.angle(self.original_data)
+            self.magn_slices = np.expand_dims(magn_values, axis=0)
+            self.phase_slices = np.expand_dims(phase_values, axis=0)
+
+        elif self.original_data.ndim == 3:
             # Data contains multiple slices; can I be sure that with every dataset the slice dimension is the same (0)?
-            self.magn_slices = np.abs(self.data)
-            self.phase_slices = np.angle(self.data)
-            self.magn_values = 0
-            self.phase_values = 0
-        elif self.data.ndim == 4:
+            self.magn_slices = np.abs(self.original_data)
+            self.phase_slices = np.angle(self.original_data)
+
+        elif self.original_data.ndim == 4:
             # There is one extra dimension we don't need, this happens in our test data; We should not encounter this
             # case in real life later on.
-            self.data = np.squeeze(self.data[:, 0, :, :])
-            self.magn_slices = np.abs(self.data)
-            self.phase_slices = np.angle(self.data)
-            self.magn_values = 0
-            self.phase_values = 0
+            self.original_data = np.squeeze(self.original_data[:, 0, :, :])
+            self.magn_slices = np.abs(self.original_data)
+            self.phase_slices = np.angle(self.original_data)
+
+        self.active_data = self.magn_slices if magnitude else self.phase_slices
+
+    def change_active_data(self, magnitude):
+        """
+        Changes the value of :attr:`active_data` to either :attr:`magn_slices` or :attr:`phase_slices` depending on
+        the value of :paramref:`magnitude`.
+
+        :param magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
+        :type magnitude: bool
+        """
+        if isinstance(self.active_data, np.ndarray):
+            self.active_data = self.magn_slices if magnitude else self.phase_slices
 
     def clear_data(self):
         """
         Sets all attributes back to 0 as they were after initialization.
         """
-        self.data = 0
-        self.magn_values = 0
-        self.phase_values = 0
+        self.original_data = 0
         self.magn_slices = 0
         self.phase_slices = 0
+        self.active_data = 0
 
     def show_data(self):
         """
         Prints type and shape of :attr:`data`.
         """
-        print('Data Type  ', type(self.data))
-        print('Data Shape  ', self.data.shape)
+        print('Data Type  ', type(self.original_data))
+        print('Data Shape  ', self.original_data.shape)
 
 
 def main():
