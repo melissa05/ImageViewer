@@ -1,7 +1,21 @@
-imageviewer
-===========
+Submodules
+==========
 
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 3
 
-   imageviewer
+main module
+-----------
+
+.. automodule:: imageviewer.main
+  :members:
+  :undoc-members:
+  :show-inheritance:
+
+fileHandling module
+-------------------
+
+.. automodule:: imageviewer.fileHandling
+  :members:
+  :undoc-members:
+  :show-inheritance:

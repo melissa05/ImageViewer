@@ -35,8 +35,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     :vartype select_box: :class:`SelectBox`
     :ivar data_handling: Data is being processed and stored here.
     :vartype data_handling: :class:`DataHandling`
-    :ivar mplwidget: A selfmade widget (inherits from QWidget) which is used to visualize image data.
-    :vartype mplwidget: :class:`~imageviwer.ui.mplwidget.MplWidget`
+    :ivar mplWidget: A self-made widget (inherits from QWidget) which is used to visualize image data.
+    :vartype mplWidget: :class:`~imageviewer.ui.mplwidget.MplWidget`
     """
     def __init__(self):
         super().__init__()
@@ -58,7 +58,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.menuColormap.triggered.connect(self.change_cmap)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
 
-        self.mplwidget.signals.position_detected.connect(self.set_statistic_labels)
+        self.mplWidget.toolbar.signals.positionDetected.connect(self.set_statistic_labels)
 
         # Generate Selection UI:
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
@@ -183,7 +183,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Checks if there is more than one dataset within the :paramref:`file_sets`. If yes, opens instance of
         :class:`SelectBox` which lets user select a dataset; if no, calls :meth:`set_patientdata_labels_dicom` and
-        directly loads the data of the only dataset using :class:`~fileHandling.GetFileContentDicom`.
+        directly loads the data of the only dataset using :class:`~imageviewer.fileHandling.GetFileContentDicom`.
 
         It sets :attr:`~dicom_sets` to :paramref:`file_sets` and :attr:`~filename` to a list of the names of the
         first files of each fileset. These names will then stand for the set the file belongs to respectively.
@@ -326,8 +326,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         sets :attr:`slice_label`'s text and changes :attr:`slice` to a lower value if needed.
         """
         # Clearing Axes, setting title:
-        self.mplwidget.canvas.axes.clear()
-        self.mplwidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
+        self.mplWidget.canvas.axes.clear()
+        self.mplWidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
 
         if self.slice >= self.data_handling.active_data.shape[0]:
             # Index would be out of range:
@@ -335,9 +335,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
             self.slice = self.data_handling.active_data.shape[0] - 1
 
-        self.mplwidget.canvas.axes.imshow(self.data_handling.active_data[self.slice, :, :], cmap=self.cmap,
+        self.mplWidget.canvas.axes.imshow(self.data_handling.active_data[self.slice, :, :], cmap=self.cmap,
                                           interpolation='none')
-        self.mplwidget.canvas.axes.axis('off')
+        self.mplWidget.canvas.axes.axis('off')
 
         self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
 
@@ -349,10 +349,11 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             row = int(y + 0.5)
             return f'x={col}, y={row}'
 
-        self.mplwidget.canvas.axes.format_coord = format_coord
-        self.mplwidget.canvas.draw()
-        self.mplwidget.empty = False
-        self.mplwidget.rectangular_selection()
+        self.mplWidget.canvas.axes.format_coord = format_coord
+        self.mplWidget.canvas.draw()
+        self.mplWidget.empty = False
+        if self.mplWidget.toolbar._active == 'RECTSELECT':
+            self.mplWidget.toolbar.rectangular_selection()
 
     @pyqtSlot(tuple, tuple)
     def set_statistic_labels(self, startposition, endposition):
