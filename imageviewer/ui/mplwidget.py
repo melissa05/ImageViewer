@@ -178,8 +178,8 @@ class MplWidget(QWidget):
         :vartype toolbar: :class:`NavigationToolbar`
         :ivar empty: Indicates if canvas is empty.
         :vartype empty: bool
-        :ivar imageViewer: Instance of the main window the widget is part of. Allows access to data and variables. Is
-            set in :class:`~imageviewer.main.ImageViewer`'s __init__().
+        :ivar imageViewer: Instance of the main window the widget is part of. Allows access to data and variables. It
+            is set in :class:`~imageviewer.main.ImageViewer`'s __init__().
         :vartype imageViewer: :class:`~imageviewer.main.ImageViewer`
         """
         QWidget.__init__(self, parent)
