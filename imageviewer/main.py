@@ -5,6 +5,7 @@ import pydicom
 from PyQt5.QtCore import QThreadPool, pyqtSlot
 from PyQt5 import QtWidgets
 import numpy as np
+from matplotlib import cm
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
 from imageviewer.ui import mainWindow, selectBox
@@ -16,29 +17,30 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     Lets user open h5 and dicom files of which image data will be displayed using matplotlib, change the colormap,
     and select if magnitude or phase shall be displayed.
-
-    :ivar filename: Either the h5 file the user selected, or a list of the names of the first files of all dicom
-        dataset within a dicom directory.
-    :vartype filename: instance of h5py._hl.files.File (in case of h5), or list[str] (in case of dicom)
-    :ivar directory: Whole path of the dicom directory the user selected (including trailing slash '/').
-    :vartype directory: str
-    :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory, identified
-        by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
-    :vartype dicom_sets: list[list[str]]
-    :ivar slice: The number of the slice of the image data being displayed.
-    :vartype slice: int
-    :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
-    :vartype cmap: str
-    :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
-    :vartype magnitude: bool
-    :ivar select_box: Window which lets user select a dataset within a selected file/directory.
-    :vartype select_box: :class:`SelectBox`
-    :ivar data_handling: Data is being processed and stored here.
-    :vartype data_handling: :class:`DataHandling`
-    :ivar mplWidget: A self-made widget (inherits from QWidget) which is used to visualize image data.
-    :vartype mplWidget: :class:`~imageviewer.ui.mplwidget.MplWidget`
     """
     def __init__(self):
+        """
+        :ivar filename: Either the h5 file the user selected, or a list of the names of the first files of all dicom
+            dataset within a dicom directory.
+        :vartype filename: :class:`h5py._hl.files.File`, or list[str]
+        :ivar directory: Whole path of the dicom directory the user selected (including trailing slash '/').
+        :vartype directory: str
+        :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory,
+            identified by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
+        :vartype dicom_sets: list[list[str]]
+        :ivar slice: The number of the slice of the image data being displayed.
+        :vartype slice: int
+        :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
+        :vartype cmap: str
+        :ivar magnitude: Indicates whether magnitude (True) or phase (False) of data is currently selected by the user.
+        :vartype magnitude: bool
+        :ivar select_box: Window which lets user select a dataset within a selected file/directory.
+        :vartype select_box: :class:`SelectBox`
+        :ivar data_handling: Data is being processed and stored here.
+        :vartype data_handling: :class:`DataHandling`
+        :ivar mplWidget: A self-made widget (inherits from QWidget) which is used to visualize image data.
+        :vartype mplWidget: :class:`~imageviewer.ui.mplwidget.MplWidget`
+        """
         super().__init__()
         self.setupUi(self)
 
@@ -58,7 +60,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.menuColormap.triggered.connect(self.change_cmap)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
 
-        self.mplWidget.toolbar.signals.positionDetected.connect(self.set_statistic_labels)
+        self.mplWidget.toolbar.signals.rectangularSelection.connect(self.statistics)
 
         # Generate Selection UI:
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
@@ -71,6 +73,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         # Generate worker threads (ThreadPool):
         self.threadpool = QThreadPool()
 
+        self.mplWidget.imageViewer = self
 
     def wheelEvent(self, event):
         """
@@ -82,15 +85,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :type event: :class:`QtGui.QWheelEvent`
         """
         if isinstance(self.data_handling.active_data, np.ndarray):
-            # print(self.slice)
-            # print(event.angleDelta().y())
-
             d = event.angleDelta().y() // 120
             slice_i = self.slice + d
             if 0 <= slice_i and slice_i < self.data_handling.magn_slices.shape[0]:
                 self.slice = slice_i
 
-                self.plot_data()
+                self.update_plot()
+                self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
 
     def close(self):
         """
@@ -110,7 +111,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.filename = h5py.File(filename)
             self.open_file_h5()
 
-    @pyqtSlot()
     def open_file_h5(self):
         """
         Checks if there is more than one dataset within the file (:attr:`filename`) to open. If yes, opens instance
@@ -132,7 +132,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # QThreadPool.start():
             get_file_content_thread = GetFileContentH5(self.filename, self.filename)
             get_file_content_thread.signals.add_data.connect(self.add_data)
-            get_file_content_thread.signals.finished.connect(self.done)
+            get_file_content_thread.signals.finished.connect(self.plot_data)
             self.threadpool.start(get_file_content_thread)
             self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
 
@@ -143,11 +143,11 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         If there is more than one file present within this directory (which is usually the case), a new thread,
         started by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`, will sort the files into datasets. Once
-        sorting is done, it will call :meth:`open_file_dicom`.
+        sorting is done, it will call :meth:`open_file_dcm`.
 
-        If there is only one dicom file present in the directory (very untypically), this file is loaded directly using
-        :class:`~fileHandling.GetFileContentDicom` and also :meth:`set_patientdata_labels_dicom` is called. Some
-        attributes are also set directly, so the 'normal' file loading functions can be used.
+        If there is only one dicom file present in the directory (very untypically), this file is loaded directly
+        using :class:`~imageviewer.fileHandling.GetFileContentDicom` and also :meth:`set_patientdata_labels_dicom` is
+        called. Some attributes are also set directly, so the 'normal' file loading functions can be used.
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(caption="Pick a folder")
         if directory:
@@ -158,7 +158,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
             if len(filenames) > 1:
                 identify_datasets_thread = IdentifyDatasetsDicom(filenames)
-                identify_datasets_thread.signals.setsIdentified.connect(self.open_file_dicom)
+                identify_datasets_thread.signals.setsIdentified.connect(self.open_file_dcm)
                 self.threadpool.start(identify_datasets_thread)
                 self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
             else:
@@ -174,12 +174,11 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 # QThreadPool.start():
                 get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
                 get_file_content_thread.signals.add_data.connect(self.add_data)
-                get_file_content_thread.signals.finished.connect(self.done)
+                get_file_content_thread.signals.finished.connect(self.plot_data)
                 self.threadpool.start(get_file_content_thread)
                 self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
 
-    @pyqtSlot(object)
-    def open_file_dicom(self, file_sets):
+    def open_file_dcm(self, file_sets):
         """
         Checks if there is more than one dataset within the :paramref:`file_sets`. If yes, opens instance of
         :class:`SelectBox` which lets user select a dataset; if no, calls :meth:`set_patientdata_labels_dicom` and
@@ -193,7 +192,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         self.dicom_sets = file_sets
         self.filename = [f_set[0] for f_set in file_sets]
-        print('self.filename: ', self.filename)
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
             # dataset:
@@ -211,7 +209,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # QThreadPool.start():
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
             get_file_content_thread.signals.add_data.connect(self.add_data)
-            get_file_content_thread.signals.finished.connect(self.done)
+            get_file_content_thread.signals.finished.connect(self.plot_data)
             self.threadpool.start(get_file_content_thread)
             self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the pool
 
@@ -234,12 +232,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
 
         get_file_content_thread.signals.add_data.connect(self.add_data)
-        get_file_content_thread.signals.finished.connect(self.done)
-        # get_file_content_thread.signals.finished.connect(self.plot_data)
+        get_file_content_thread.signals.finished.connect(self.plot_data)
         self.threadpool.start(get_file_content_thread)
         self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the thread pool
 
-    @pyqtSlot()
     def set_patientdata_labels_h5(self):
         """
         Sets the text values of the labels regarding patient data back to default values since .h5 does not contain
@@ -250,7 +246,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.label_sex_value.setText('-')
         self.label_date_value.setText('----/--/--')
 
-    @pyqtSlot()
     def set_patientdata_labels_dicom(self):
         """
         Sets the text values of the labels regarding patient data to the metadata of the dicom file.
@@ -275,27 +270,21 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.data_handling.add_data(data, self.magnitude)
 
     @pyqtSlot()
-    def done(self):
-        """
-        As of now, this only calls :meth:`plot_data`. Maybe in the future this will fulfill a certain purpose,
-        therefore it is kept for now.
-        """
-        self.plot_data()
-
-    @pyqtSlot()
     def change_cmap(self):
         """
-        Is called when user changes the colormap. Sets :attr:`cmap` to selected colormap and calls
-        :meth:`plot_data_if_data`.
+        Is called when user changes the colormap. Sets :attr:`cmap` to selected colormap, changes colormap of the
+        actual image in :attr:`mplWidget` and calls :meth:`update_plot`.
         """
         self.cmap = self.menuColormap.sender().text().lower()
-        self.plot_data_if_data()
+        self.mplWidget.im.cmap = cm.get_cmap(self.cmap)
+        self.update_plot()
 
     @pyqtSlot()
     def change_magn_phase(self):
         """
         Is called when user changes the value of the comboBox in the GUI regarding magnitude and phase. Sets
         :attr:`magnitude` to True when user selected Magnitude, sets it to False when user selected Phase.
+        Calls :meth:`DataHandling.change_active_data` and :meth:`update_plot` afterwards.
         """
         if self.comboBox_magn_phase.currentText() == 'Magnitude':
             self.magnitude = True
@@ -305,58 +294,37 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             raise Exception(f'Invalid text of ImageViewer.comboBox_magn_phase: {self.comboBox_magn_phase.currentText()}')
 
         self.data_handling.change_active_data(self.magnitude)
+        self.update_plot()
 
-        self.plot_data_if_data()
-
-    @pyqtSlot()
-    def plot_data_if_data(self):
-        """
-        This method calls :meth:`plot_data` if any image data is given in :attr:`data_handling.active_data`,
-        else it does nothing.
-        """
-        if isinstance(self.data_handling.active_data, np.ndarray):
-            self.plot_data()
-
-    @pyqtSlot()
     def plot_data(self):
         """
-        Responsible for plotting the image data.
+        Plots data, sets statistic value labels (back) to default, checks if slice index is out of range.
 
-        This function plots the data stored in :attr:`data_handling.active_data` on the :attr:`mplwidget`. It also
-        sets :attr:`slice_label`'s text and changes :attr:`slice` to a lower value if needed.
+        This function plots the data stored in :attr:`data_handling.active_data` on the :attr:`mplWidget` by calling
+        :meth:`imageviewer.ui.MplWidget.create_plot`. It also sets :attr:`label_mean_value`'s and
+        :attr:`label_std_value`'s text to default (-) and changes :attr:`slice` to a lower value if needed.
         """
-        # Clearing Axes, setting title:
-        self.mplWidget.canvas.axes.clear()
-        self.mplWidget.canvas.axes.set_title(self.comboBox_magn_phase.currentText())
+        if isinstance(self.data_handling.active_data, np.ndarray):
+            # Check if current slice index is out of range:
+            if self.slice >= self.data_handling.active_data.shape[0]:
+                # Index would be out of range:
+                # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
+                # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
+                self.slice = self.data_handling.active_data.shape[0] - 1
 
-        if self.slice >= self.data_handling.active_data.shape[0]:
-            # Index would be out of range:
-            # When scrolling to a 'high' slice of one dataset and then loading another one that has fewer slices,
-            # this case might occur, so we set self.slices to the 'highest' slice of the current dataset.
-            self.slice = self.data_handling.active_data.shape[0] - 1
+            # Set statistics value labels back to default (in case other file was loaded before):
+            self.label_mean_value.setText('-')
+            self.label_std_value.setText('-')
 
-        self.mplWidget.canvas.axes.imshow(self.data_handling.active_data[self.slice, :, :], cmap=self.cmap,
-                                          interpolation='none')
-        self.mplWidget.canvas.axes.axis('off')
+            # Actually plotting on canvas:
+            self.mplWidget.create_plot()
 
-        self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
-
-        def format_coord(x, y):
-            """
-            Changes coordinates displayed in the matplotlib toolbar to integers, which represent data indices.
-            """
-            col = int(x + 0.5)
-            row = int(y + 0.5)
-            return f'x={col}, y={row}'
-
-        self.mplWidget.canvas.axes.format_coord = format_coord
-        self.mplWidget.canvas.draw()
-        self.mplWidget.empty = False
-        if self.mplWidget.toolbar._active == 'RECTSELECT':
-            self.mplWidget.toolbar.rectangular_selection()
+    def update_plot(self):
+        if isinstance(self.data_handling.active_data, np.ndarray):
+            self.mplWidget.update_plot()
 
     @pyqtSlot(tuple, tuple)
-    def set_statistic_labels(self, startposition, endposition):
+    def statistics(self, startposition, endposition):
         """
         Calculates mean and std of the data within the rectangle defined by :paramref:`startposition` and
         :paramref:`endposition` and changes the GUI labels's text values accordingly.
@@ -373,18 +341,21 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
         std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
 
-        self.label_mean_value.setText(str(format(mean, '.3e')))
-        self.label_std_value.setText(str(format(std, '.3e')))
+        mean_text = str(round(float(mean), 3)) if 0.001 < abs(mean) < 1000 else str(format(mean, '.3e'))
+        std_text = str(round(float(std), 3)) if 0.001 < abs(std) < 1000 else str(format(std, '.3e'))
+        self.label_mean_value.setText(mean_text)
+        self.label_std_value.setText(std_text)
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     """
     Window for selecting the desired dataset within an h5 file or dicom folder.
-
-    :ivar selected: Name of the selected file within the UI window.
-    :vartype selected: None or str
     """
     def __init__(self):
+        """
+        :ivar selected: Name of the selected file within the UI window.
+        :vartype selected: None or str
+        """
         super().__init__()
         self.setupUi(self)
         self.buttonCancel.clicked.connect(self.cancel)
@@ -411,20 +382,21 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
 
 class DataHandling:
     """
-    Image data is stored in this class sorted by magnitude and phase.
-
-    :ivar original_data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
-    :vartype data: numpy.ndarray
-    :ivar magn_slices: The magnitude values of the image data.
-    :vartype magn_slices: numpy.ndarray
-    :ivar phase_slices: The phase values of the image data.
-    :vartype phase_slices: numpy.ndarray
-    :ivar active_data: Contains either magnitude or phase data, depending on :attr:`magnitude`.
-    :vartype active_data: numpy.ndarray
-    :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
-    :vartype magnitude: bool
+    Image data is stored in this class sorted into magnitude and phase.
     """
     def __init__(self):
+        """
+        :ivar original_data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
+        :vartype original_data: numpy.ndarray
+        :ivar magn_slices: The magnitude values of the image data.
+        :vartype magn_slices: numpy.ndarray
+        :ivar phase_slices: The phase values of the image data.
+        :vartype phase_slices: numpy.ndarray
+        :ivar active_data: Contains either magnitude or phase data, depending on :attr:`magnitude`.
+        :vartype active_data: numpy.ndarray
+        :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
+        :vartype magnitude: bool
+        """
         self.magnitude = True
         self.original_data = 0
 
@@ -450,12 +422,6 @@ class DataHandling:
         """
         # Removing unnecessary dimension; is there data where there is more than 1 dimension to be removed?
         self.original_data = np.squeeze(data)
-        # print(f'Type original: {type(data)}')
-        # print(f'Shape original: {data.shape}')
-        # print(f'Shape squeezed: {self.data.shape}')
-        # print(f'Type: {type(self.data)}')
-        # print(f'DType: {self.data.dtype}')
-        # print(f'Dimensions: {self.data.ndim}')
 
         if self.original_data.ndim == 2:
             # Data is just one slice; we add an extra dimension so it can be handled like 3D data:

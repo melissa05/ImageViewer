@@ -30,6 +30,8 @@ class NavigationToolbar(NavigationToolbar2QT):
         super().__init__(*args, **kwargs)
         self.mplwidget = self.parent
         self.rect_selector = None
+        self.rectselect_startposition = None
+        self.rectselect_endposition = None
         self.signals = NavigationToolbarSignals()
 
         # Adding rectselect action:
@@ -44,14 +46,13 @@ class NavigationToolbar(NavigationToolbar2QT):
         self._actions['zoom'].toggled.connect(self.deactivate_rectselect)
         self._actions['pan'].toggled.connect(self.deactivate_rectselect)
 
-    # Remove unwanted actions by leaving them out:
+    # Remove unwanted actions by leaving them out. (None, None, None, None) creates separator:
     toolitems = (('Home', 'Reset original view', 'home', 'home'),
                  ('Back', 'Back to previous view', 'back', 'back'),
                  ('Forward', 'Forward to next view', 'forward', 'forward'),
                  (None, None, None, None),
                  ('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
                  ('Zoom', 'Zoom to rectangle', 'zoom_to_rect', 'zoom'),
-                 # ('Subplots', 'Configure subplots', 'subplots', 'configure_subplots'),
                  (None, None, None, None),
                  ('Save', 'Save the figure', 'filesave', 'save_figure'))
 
@@ -74,7 +75,7 @@ class NavigationToolbar(NavigationToolbar2QT):
             # If the canvas is not empty, activate or create the rectangle selector:
             if not self.mplwidget.empty:
                 if not self.rect_selector:
-                    self.rectangular_selection()
+                    self.create_rectangle_selector()
                 else:
                     self.rect_selector.set_active(True)
 
@@ -101,7 +102,7 @@ class NavigationToolbar(NavigationToolbar2QT):
             if self.rect_selector:
                 self.rect_selector.set_active(False)
 
-    def rectangular_selection(self):
+    def create_rectangle_selector(self):
         """
         This function simply enables rectangular selection by creating an instance of
         :class:`matplotlib.widgets.RectangleSelector`.
@@ -124,15 +125,15 @@ class NavigationToolbar(NavigationToolbar2QT):
         :type erelease: :class:`matplotlib.backend_bases.MouseEvent`
         """
         if not self.mplwidget.empty:
-            startposition = (eclick.xdata, eclick.ydata)
-            endposition = (erelease.xdata, erelease.ydata)
-            self.signals.positionDetected.emit(startposition, endposition)
+            self.rectselect_startposition = (eclick.xdata, eclick.ydata)
+            self.rectselect_endposition = (erelease.xdata, erelease.ydata)
+            self.signals.rectangularSelection.emit(self.rectselect_startposition, self.rectselect_endposition)
 
     def _create_icon(self, name):
         """
-        Creates a responsive icon in the look of default icons to be placed in the toolbar.
+        Creates a responsive icon with the style of default icons to be placed in the toolbar.
 
-        :param name: Name of image file to be used.
+        :param name: Name (including relative path) of image file to be used.
         :type name: str
         :return: Icon for the toolbar.
         :rtype: :class:`PyQt5.QtGui.QIcon`
@@ -162,7 +163,7 @@ class NavigationToolbarSignals(QObject):
     """
     Class for generating thread signals for the :class:`NavigationToolbar` class.
     """
-    positionDetected = pyqtSignal(tuple, tuple)
+    rectangularSelection = pyqtSignal(tuple, tuple)
 
 
 class MplWidget(QWidget):
@@ -177,6 +178,9 @@ class MplWidget(QWidget):
         :vartype toolbar: :class:`NavigationToolbar`
         :ivar empty: Indicates if canvas is empty.
         :vartype empty: bool
+        :ivar imageViewer: Instance of the main window the widget is part of. Allows access to data and variables. Is
+            set in :class:`~imageviewer.main.ImageViewer`'s __init__().
+        :vartype imageViewer: :class:`~imageviewer.main.ImageViewer`
         """
         QWidget.__init__(self, parent)
 
@@ -190,3 +194,58 @@ class MplWidget(QWidget):
         vertical_layout.addWidget(self.canvas)
         vertical_layout.addWidget(self.toolbar)
         self.setLayout(vertical_layout)
+
+    def create_plot(self):
+        """
+        Clears :attr:`canvas.axes`, creates (new) image to show and draws it on :attr:`canvas`. It is intended to use
+        this method when a new dataset or file is loaded.
+
+        :meth:`canvas.axes.format_coord` gets overwritten, so that data coordinates are shown in integer numbers. The
+        *rectselect* mode is also taken care of here (in case the button is pressed or there was a selector present
+        used on the old image).
+
+        See also: :meth:`update_plot`.
+        """
+        # Clearing Axes, setting title:
+        self.canvas.axes.clear()
+        self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
+
+        # Creating image:
+        self.im = self.canvas.axes.imshow(self.imageViewer.data_handling.active_data[self.imageViewer.slice, :, :],
+                                          cmap=self.imageViewer.cmap)
+        self.canvas.axes.axis('off')
+
+        def format_coord(x, y):
+            """
+            Changes coordinates displayed in the matplotlib toolbar to integers, which represent data indices.
+            """
+            col = int(x + 0.5)
+            row = int(y + 0.5)
+            return f'x={col}, y={row}'
+
+        self.canvas.axes.format_coord = format_coord
+        self.canvas.draw()
+        self.empty = False
+        if self.toolbar._active == 'RECTSELECT':
+            # Create new rectangle selector:
+            self.toolbar.create_rectangle_selector()
+        elif self.toolbar.rect_selector:
+            # 'Delete' former rectangle selector:
+            self.toolbar.rect_selector = None
+
+    def update_plot(self):
+        """
+        Changes image data to currently active data and updates the plot. The toolbar functions and settings remain as
+        they are. It is intended to use this method when another image of the same dataset needs to be visualized (e.g.
+        after colormap was changed or another slice was selected).
+
+        See also: :meth:`create_plot`.
+        """
+        self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
+        self.im.set_data(self.imageViewer.data_handling.active_data[self.imageViewer.slice, :, :])
+        self.im.set_clim([self.imageViewer.data_handling.active_data.min(), self.imageViewer.data_handling.active_data.max()])
+        self.canvas.draw()
+
+        # Emit rectangularSelection signal so the statistic labels get updated:
+        if self.toolbar.rect_selector and self.toolbar.rectselect_startposition:
+            self.toolbar.signals.rectangularSelection.emit(self.toolbar.rectselect_startposition, self.toolbar.rectselect_endposition)
