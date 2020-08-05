@@ -10,7 +10,7 @@ class NavigationToolbar(NavigationToolbar2QT):
     """
     Custom matplotlib navigation toolbar used by :class:`MplWidget`.
 
-    The class variable :attr:`~toolitems` is overridden so that the *configure subplots* button and functionality are
+    The class variable :attr:`~toolitems` is overwritten so that the *configure subplots* button and functionality are
     removed. The method *_update_buttons_checked()* is also overridden to include the self made *rectselect* action
     (select rectangle within which mean and std shall be calculated).
     """
