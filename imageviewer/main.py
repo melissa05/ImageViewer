@@ -61,6 +61,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
 
         self.mplWidget.toolbar.signals.rectangularSelection.connect(self.statistics)
+        self.mplWidget.toolbar.signals.ellipseSelection.connect(self.statistics)
 
         # Generate Selection UI:
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
@@ -90,8 +91,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             if 0 <= slice_i and slice_i < self.data_handling.magn_slices.shape[0]:
                 self.slice = slice_i
 
+                self.set_slice_label()
                 self.update_plot()
-                self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
 
     def close(self):
         """
@@ -233,8 +234,16 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         get_file_content_thread.signals.add_data.connect(self.add_data)
         get_file_content_thread.signals.finished.connect(self.plot_data)
+        get_file_content_thread.signals.finished.connect(self.set_slice_label)
         self.threadpool.start(get_file_content_thread)
         self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the thread pool
+
+    @pyqtSlot()
+    def set_slice_label(self):
+        """
+        Sets the label for current slice to according value.
+        """
+        self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
 
     def set_patientdata_labels_h5(self):
         """
@@ -276,8 +285,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         actual image in :attr:`mplWidget` and calls :meth:`update_plot`.
         """
         self.cmap = self.menuColormap.sender().text().lower()
-        self.mplWidget.im.cmap = cm.get_cmap(self.cmap)
-        self.update_plot()
+        if not self.mplWidget.empty:
+            self.mplWidget.im.cmap = cm.get_cmap(self.cmap)
+            self.update_plot()
 
     @pyqtSlot()
     def change_magn_phase(self):
@@ -323,23 +333,43 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if isinstance(self.data_handling.active_data, np.ndarray):
             self.mplWidget.update_plot()
 
-    @pyqtSlot(tuple, tuple)
-    def statistics(self, startposition, endposition):
+    @pyqtSlot(tuple, tuple, str)
+    def statistics(self, startposition, endposition, selector):
         """
-        Calculates mean and std of the data within the rectangle defined by :paramref:`startposition` and
-        :paramref:`endposition` and changes the GUI labels's text values accordingly.
+        Calculates mean and std of the data within the patch of the selector defined by :paramref:`startposition` (
+        upper left corner) and :paramref:`endposition` (lower right corner) and changes the GUI labels' text values
+        accordingly.
 
         :param startposition: Coordinates of top left corner of rectangle.
         :type startposition: tuple[numpy.float64]
         :param endposition: Coordinates of bottom right corner of rectangle.
         :type endposition: tuple[numpy.float64]
+        :param selector: Type of selector (rectangle or ellipse).
+        :type selector: str
         """
         # (x, y) coordinates = (col, row) indices of start and end points of selected rectangle:
         start = tuple(int(i) for i in startposition)
         end = tuple(int(i) for i in endposition)
+        if selector == 'rectangle':
+            mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
+            std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
 
-        mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
-        std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
+        elif selector == 'ellipse':
+            horizontal = abs(start[0] - end[0]); a = horizontal/2
+            vertical = abs(start[1] - end[1]); b = vertical/2
+            center = (start[0]+a, start[1]+b); x0 = center[0]; y0 = center[1]
+
+            x = np.arange(0, self.data_handling.active_data.shape[1])
+            y = np.arange(0, self.data_handling.active_data.shape[2])[:,None]
+
+            contained_mask = ((x-x0)/a)**2 + ((y-y0)/b)**2 <= 1
+
+            mean = np.mean(self.data_handling.active_data[self.slice, :, :][contained_mask])
+            std = np.std(self.data_handling.active_data[self.slice, :, :][contained_mask])
+
+        else:
+            raise Exception('Valid values for parameter selector are "rectangle" and "ellipse", got {} '
+                            'instead.'.format(selector))
 
         mean_text = str(round(float(mean), 3)) if 0.001 < abs(mean) < 1000 else str(format(mean, '.3e'))
         std_text = str(round(float(std), 3)) if 0.001 < abs(std) < 1000 else str(format(std, '.3e'))
