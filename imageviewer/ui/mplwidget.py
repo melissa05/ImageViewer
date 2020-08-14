@@ -35,7 +35,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.rect_selector = None
         self.rectselect_startposition = None
         self.rectselect_endposition = None
-        self.actionRectSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/mean_large.png'),
+        self.actionRectSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/rectangle.png'),
                                         text='Select rectangle for statistics')
         self.actionRectSelect.setCheckable(True)
         self.actionRectSelect.setObjectName("actionRectSelect")
@@ -50,7 +50,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.ellipse_selector = None
         self.ellipseselect_startposition = None
         self.ellipseselect_endposition = None
-        self.actionEllipseSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/mean_large.png'),
+        self.actionEllipseSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/ellipse.png'),
                                            text='Select ellipse for statistics')
         self.actionEllipseSelect.setCheckable(True)
         self.actionEllipseSelect.setObjectName("actionEllipseSelect")
@@ -61,6 +61,21 @@ class NavigationToolbar(NavigationToolbar2QT):
         self._actions['ellipseselect'].toggled.connect(self.deactivate_hide_rect_selector)
         self._actions['zoom'].toggled.connect(self.deactivate_ellipse_selector)
         self._actions['pan'].toggled.connect(self.deactivate_ellipse_selector)
+
+        # Adding anti-clockwise rotation action:
+        self.actionRotateAntiClockwise = QAction(icon=self._create_icon('imageviewer/ui/icons/rotate_anticlock.png'),
+                                                 text='Rotate plot anti-clockwise')
+        self.actionRotateAntiClockwise.setObjectName("actionRotateAntiClockwise")
+        self.actionRotateAntiClockwise.triggered.connect(self.rotate_anticlockwise)
+        self.insertAction(self._actions['save_figure'], self.actionRotateAntiClockwise)
+
+        # Adding anti-clockwise rotation action:
+        self.actionRotateClockwise = QAction(icon=self._create_icon('imageviewer/ui/icons/rotate_clock.png'),
+                                             text='Rotate plot clockwise')
+        self.actionRotateClockwise.setObjectName("actionRotateClockwise")
+        self.actionRotateClockwise.triggered.connect(self.rotate_clockwise)
+        self.insertAction(self._actions['save_figure'], self.actionRotateClockwise)
+        self.insertSeparator(self._actions['save_figure'])
 
     # Remove unwanted actions by leaving them out. (None, None, None, None) creates separator:
     toolitems = (('Home', 'Reset original view', 'home', 'home'),
@@ -241,6 +256,25 @@ class NavigationToolbar(NavigationToolbar2QT):
             self.ellipseselect_endposition = (erelease.xdata, erelease.ydata)
             self.signals.ellipseSelection.emit(self.ellipseselect_startposition, self.ellipseselect_endposition,
                                                'ellipse')
+
+    @pyqtSlot()
+    def rotate_anticlockwise(self):
+        """
+        Rotates plot anti-clockwise once by calling :meth:`.DataHandling.rotate_data` and
+        :meth:`MplWidget.update_plot`.
+        """
+        if not self.mplwidget.empty:
+            self.mplwidget.imageViewer.data_handling.rotate_data(k=1)
+            self.mplwidget.update_plot()
+
+    @pyqtSlot()
+    def rotate_clockwise(self):
+        """
+        Rotates plot clockwise once by calling :meth:`.DataHandling.rotate_data` and :meth:`MplWidget.update_plot`.
+        """
+        if not self.mplwidget.empty:
+            self.mplwidget.imageViewer.data_handling.rotate_data(k=3)
+            self.mplwidget.update_plot()
 
     def _create_icon(self, name):
         """

@@ -32,8 +32,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :vartype slice: int
         :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
         :vartype cmap: str
-        :ivar magnitude: Indicates whether magnitude (True) or phase (False) of data is currently selected by the user.
-        :vartype magnitude: bool
         :ivar select_box: Window which lets user select a dataset within a selected file/directory.
         :vartype select_box: :class:`SelectBox`
         :ivar data_handling: Data is being processed and stored here.
@@ -50,7 +48,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.dicom_sets = []
         self.slice = 0
         self.cmap = 'plasma'
-        self.magnitude = True
 
         # Connect UI signals to slots (functions):
         self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
@@ -276,7 +273,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :param data: Image data from file.
         :type data: numpy.ndarray
         """
-        self.data_handling.add_data(data, self.magnitude)
+        self.data_handling.add_data(data)
 
     @pyqtSlot()
     def change_cmap(self):
@@ -297,13 +294,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         Calls :meth:`DataHandling.change_active_data` and :meth:`update_plot` afterwards.
         """
         if self.comboBox_magn_phase.currentText() == 'Magnitude':
-            self.magnitude = True
+            self.data_handling.magnitude = True
         elif self.comboBox_magn_phase.currentText() == 'Phase':
-            self.magnitude = False
+            self.data_handling.magnitude = False
         else:
             raise Exception(f'Invalid text of ImageViewer.comboBox_magn_phase: {self.comboBox_magn_phase.currentText()}')
 
-        self.data_handling.change_active_data(self.magnitude)
+        self.data_handling.change_active_data()
         self.update_plot()
 
     def plot_data(self):
@@ -416,7 +413,8 @@ class DataHandling:
     """
     def __init__(self):
         """
-        :ivar original_data: Contains the original image data from the file (squeezed if there was an unnecessary dimension).
+        :ivar original_data: Contains the original image data from the file (squeezed if there was an unnecessary
+            dimension).
         :vartype original_data: numpy.ndarray
         :ivar magn_slices: The magnitude values of the image data.
         :vartype magn_slices: numpy.ndarray
@@ -426,6 +424,7 @@ class DataHandling:
         :vartype active_data: numpy.ndarray
         :ivar magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
         :vartype magnitude: bool
+        :value magnitude: True
         """
         self.magnitude = True
         self.original_data = 0
@@ -435,7 +434,7 @@ class DataHandling:
 
         self.active_data = 0
 
-    def add_data(self, data, magnitude):
+    def add_data(self, data):
         """
         This function takes the data from a loaded file, processes it, and stores it in the right instance attributes.
 
@@ -472,9 +471,9 @@ class DataHandling:
             self.magn_slices = np.abs(self.original_data)
             self.phase_slices = np.angle(self.original_data)
 
-        self.active_data = self.magn_slices if magnitude else self.phase_slices
+        self.active_data = self.magn_slices if self.magnitude else self.phase_slices
 
-    def change_active_data(self, magnitude):
+    def change_active_data(self):
         """
         Changes the value of :attr:`active_data` to either :attr:`magn_slices` or :attr:`phase_slices` depending on
         the value of :paramref:`magnitude`.
@@ -483,7 +482,19 @@ class DataHandling:
         :type magnitude: bool
         """
         if isinstance(self.active_data, np.ndarray):
-            self.active_data = self.magn_slices if magnitude else self.phase_slices
+            self.active_data = self.magn_slices if self.magnitude else self.phase_slices
+
+    def rotate_data(self, k):
+        """
+        Rotates data (:attr:`magn_slices`, :attr:`phase_slices`, and :attr:`active_data`) around the first axes.
+
+        :param k: Specifies how often the data is rotated by 90 degrees in anti-clockwise direction.
+        :type k: int
+        """
+        if isinstance(self.active_data, np.ndarray):
+            self.magn_slices = np.rot90(self.magn_slices, k, axes=(1, 2))
+            self.phase_slices = np.rot90(self.phase_slices, k, axes=(1, 2))
+            self.active_data = np.rot90(self.active_data, k, axes=(1, 2))
 
     def clear_data(self):
         """
