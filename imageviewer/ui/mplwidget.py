@@ -10,9 +10,9 @@ class NavigationToolbar(NavigationToolbar2QT):
     """
     Custom matplotlib navigation toolbar used by :class:`MplWidget`.
 
-    The class variable :attr:`~toolitems` is overwritten so that the *configure subplots* button and functionality are
-    removed. The method *_update_buttons_checked()* is also overridden to include the self made *rectselect* and
-    *ellipseselect* actions.
+    The class variable :attr:`~toolitems` is overwritten so that some of matplotlibs default buttons and
+    functionalities are removed. The method *_update_buttons_checked()* is also overridden to include the self made
+    *rectselect* and *ellipseselect* actions.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -67,25 +67,48 @@ class NavigationToolbar(NavigationToolbar2QT):
                                                  text='Rotate plot anti-clockwise')
         self.actionRotateAntiClockwise.setObjectName("actionRotateAntiClockwise")
         self.actionRotateAntiClockwise.triggered.connect(self.rotate_anticlockwise)
-        self.insertAction(self._actions['save_figure'], self.actionRotateAntiClockwise)
+        self.insertAction(self._actions['pan'], self.actionRotateAntiClockwise)
 
         # Adding anti-clockwise rotation action:
         self.actionRotateClockwise = QAction(icon=self._create_icon('imageviewer/ui/icons/rotate_clock.png'),
                                              text='Rotate plot clockwise')
         self.actionRotateClockwise.setObjectName("actionRotateClockwise")
         self.actionRotateClockwise.triggered.connect(self.rotate_clockwise)
-        self.insertAction(self._actions['save_figure'], self.actionRotateClockwise)
-        self.insertSeparator(self._actions['save_figure'])
+        self.insertAction(self._actions['pan'], self.actionRotateClockwise)
+        self.insertSeparator(self._actions['pan'])
 
     # Remove unwanted actions by leaving them out. (None, None, None, None) creates separator:
     toolitems = (('Home', 'Reset original view', 'home', 'home'),
-                 ('Back', 'Back to previous view', 'back', 'back'),
-                 ('Forward', 'Forward to next view', 'forward', 'forward'),
                  (None, None, None, None),
                  ('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
                  ('Zoom', 'Zoom to rectangle', 'zoom_to_rect', 'zoom'),
                  (None, None, None, None),
                  ('Save', 'Save the figure', 'filesave', 'save_figure'))
+
+    def _update_buttons_checked(self):
+        """
+        Syncs button checkstates to match active mode. Overrides parent function to include *rectselect* and
+        *ellipseselect*.
+        """
+        if 'pan' in self._actions:
+            self._actions['pan'].setChecked(self._active == 'PAN')
+        if 'zoom' in self._actions:
+            self._actions['zoom'].setChecked(self._active == 'ZOOM')
+        if 'rectselect' in self._actions:
+            self._actions['rectselect'].setChecked(self._active == 'RECTSELECT')
+        if 'ellipseselect' in self._actions:
+            self._actions['ellipseselect'].setChecked(self._active == 'ELLIPSESELECT')
+
+    def home(self):
+        """
+        Sets plot back to original view by calling :meth:`MplWidget.create_plot()`. All pan, zoom, and selection
+        settings are discarded, rotation not.
+
+        Overwrites default function.
+        """
+        self.mplwidget.create_plot()
+        self.mplwidget.imageViewer.reset_statistics()
+
 
     @pyqtSlot()
     def activate_rect_select(self):
@@ -294,20 +317,6 @@ class NavigationToolbar(NavigationToolbar2QT):
 
         return QIcon(pm)
 
-    def _update_buttons_checked(self):
-        """
-        Syncs button checkstates to match active mode. Overrides parent function to include *rectselect* and
-        *ellipseselect*.
-        """
-        if 'pan' in self._actions:
-            self._actions['pan'].setChecked(self._active == 'PAN')
-        if 'zoom' in self._actions:
-            self._actions['zoom'].setChecked(self._active == 'ZOOM')
-        if 'rectselect' in self._actions:
-            self._actions['rectselect'].setChecked(self._active == 'RECTSELECT')
-        if 'ellipseselect' in self._actions:
-            self._actions['ellipseselect'].setChecked(self._active == 'ELLIPSESELECT')
-
 
 class NavigationToolbarSignals(QObject):
     """
@@ -359,6 +368,7 @@ class MplWidget(QWidget):
         """
         # Clearing Axes, setting title:
         self.canvas.axes.clear()
+        self.canvas.axes.margins(0, 0)  # exact fit
         self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
 
         # Creating image:
@@ -416,3 +426,91 @@ class MplWidget(QWidget):
             self.toolbar.signals.ellipseSelection.emit(self.toolbar.ellipseselect_startposition,
                                                        self.toolbar.ellipseselect_endposition,
                                                        'ellipse')
+
+    def zoom_plot(self, direction):
+        """
+        Zooms in or out of the plot.
+
+        :param direction: Indicates whether to zoom in or out. Valid values are 'in' and 'out'.
+        :type direction: str
+        """
+        if not self.empty:
+            max_x = self.imageViewer.data_handling.active_data.shape[1]
+            max_y = self.imageViewer.data_handling.active_data.shape[2]
+            cur_xlim = self.canvas.axes.get_xlim()
+            cur_ylim = self.canvas.axes.get_ylim()
+            cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
+            cur_yrange = (cur_ylim[0] - cur_ylim[1])/2
+            cur_center = (int(cur_xlim[0] + cur_xrange),
+                          int(cur_ylim[1] + cur_yrange))
+
+            if direction == 'in':
+                scale = 0.8
+                if 2*cur_xrange*scale < 6 or 2*cur_yrange*scale < 6:
+                    return
+            elif direction == 'out':
+                scale = 1.2
+                if 2*cur_xrange*scale > max_x or 2*cur_yrange*scale > max_y:
+                    # Set image back to original view:
+                    self.canvas.axes.set_xlim((-0.5, max_x-0.5))
+                    self.canvas.axes.set_ylim((max_y-0.5, -0.5))
+                    self.update_plot()
+                    return
+            else:
+                raise Exception(f'Invalid value of parameter direction: {direction}')
+
+            self.canvas.axes.set_xlim((cur_center[0] - cur_xrange*scale,
+                                       cur_center[0] + cur_xrange*scale))
+            self.canvas.axes.set_ylim((cur_center[1] + cur_yrange*scale,
+                                       cur_center[1] - cur_yrange*scale))
+            self.update_plot()
+
+    def pan_plot(self, direction):
+        """
+        Pans plot in 4 main directions.
+
+        :param direction: Indicates direction to move plot to. Valid values are 'left', 'right', 'up', and 'down'.
+        :type direction: str
+        """
+        if not self.empty:
+            max_x = self.imageViewer.data_handling.active_data.shape[1] - 0.5
+            max_y = self.imageViewer.data_handling.active_data.shape[2] - 0.5
+            cur_xlim = self.canvas.axes.get_xlim()
+            cur_ylim = self.canvas.axes.get_ylim()
+            cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
+            cur_yrange = (cur_ylim[0] - cur_ylim[1])/2
+
+            distance = int(max(cur_xrange, cur_yrange)*0.1)
+
+            if direction == 'left':
+                if cur_xlim[1] + distance < max_x:
+                    self.canvas.axes.set_xlim((cur_xlim[0] + distance,
+                                               cur_xlim[1] + distance))
+                else:
+                    self.canvas.axes.set_xlim((cur_xlim[0] + (max_x-cur_xlim[1]),
+                                               max_x))
+            elif direction == 'right':
+                if cur_xlim[0] - distance > -0.5:
+                    self.canvas.axes.set_xlim((cur_xlim[0] - distance,
+                                               cur_xlim[1] - distance))
+                else:
+                    self.canvas.axes.set_xlim((-0.5,
+                                               cur_xlim[1] - (cur_xlim[0]+0.5)))
+            elif direction == 'up':
+                if cur_ylim[0] + distance < max_y:
+                    self.canvas.axes.set_ylim((cur_ylim[0] + distance,
+                                               cur_ylim[1] + distance))
+                else:
+                    self.canvas.axes.set_ylim((max_y,
+                                               cur_ylim[1] + (max_y-cur_ylim[0])))
+            elif direction == 'down':
+                if cur_ylim[1] - distance > -0.5:
+                    self.canvas.axes.set_ylim((cur_ylim[0] - distance,
+                                               cur_ylim[1] - distance))
+                else:
+                    self.canvas.axes.set_ylim((cur_ylim[0] - (cur_ylim[1]+0.5),
+                                               -0.5))
+            else:
+                raise Exception(f'Invalid value of parameter direction: {direction}')
+
+            self.update_plot()

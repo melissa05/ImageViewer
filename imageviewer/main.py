@@ -2,8 +2,9 @@ import sys
 import os
 import h5py
 import pydicom
-from PyQt5.QtCore import QThreadPool, pyqtSlot
 from PyQt5 import QtWidgets
+from PyQt5.Qt import Qt
+from PyQt5.QtCore import QThreadPool, pyqtSlot
 import numpy as np
 from matplotlib import cm
 
@@ -41,6 +42,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         super().__init__()
         self.setupUi(self)
+        self.setFocus()  # To remove focus from comboBox (up and down key input would be stolen by it)
 
         # Setup attributes:
         self.filename = ''
@@ -76,20 +78,45 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     def wheelEvent(self, event):
         """
         This function enables going through the data slices (if there are ones) using the mouse wheel. It turns a 120°
-        turn in the y direction of the mousewheel into one slice difference.
-        This function only does something if there are data slices given.
+        turn in the y direction of the mousewheel into one slice difference and calls :meth`change_slice`.
 
         :param event: The wheel event which contains parameters that describe a wheel event.
-        :type event: :class:`QtGui.QWheelEvent`
+        :type event: :class:`QWheelEvent`
         """
-        if isinstance(self.data_handling.active_data, np.ndarray):
-            d = event.angleDelta().y() // 120
-            slice_i = self.slice + d
-            if 0 <= slice_i and slice_i < self.data_handling.magn_slices.shape[0]:
-                self.slice = slice_i
+        d = event.angleDelta().y() // 120
+        self.change_slice(d)
 
-                self.set_slice_label()
-                self.update_plot()
+    def keyPressEvent(self, event):
+        """
+        Handles key press inputs.
+
+        :param event: Instance of a PyQt input event.
+        :type event: :class:`QKeyEvent`
+        """
+        # Slice selection / panning plot (with ctrl) via left and right keys:
+        if event.key() == Qt.Key_Left:
+            if event.modifiers() and Qt.ControlModifier:
+                self.mplWidget.pan_plot('right')
+            else:
+                self.change_slice(d=-1)
+        elif event.key() == Qt.Key_Right:
+            if event.modifiers() and Qt.ControlModifier:
+                self.mplWidget.pan_plot('left')
+            else:
+                self.change_slice(d=1)
+
+        # Zooming / panning plot (with ctrl) via up and down keys:
+        elif event.key() == Qt.Key_Up:
+            if event.modifiers() and Qt.ControlModifier:
+                self.mplWidget.pan_plot('down')
+            else:
+                self.mplWidget.zoom_plot('in')
+        elif event.key() == Qt.Key_Down:
+            if event.modifiers() and Qt.ControlModifier:
+                self.mplWidget.pan_plot('up')
+            else:
+                self.mplWidget.zoom_plot('out')
+
 
     def close(self):
         """
@@ -97,6 +124,21 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         sys.exit()
 
+
+    def change_slice(self, d):
+        """
+        Changes the current slice of data (if not out of range for the current dataset).
+
+        :param d: The difference between new and old slice number.
+        :type d: int
+        """
+        if not self.mplWidget.empty:
+            slice_i = self.slice + d
+            if 0 <= slice_i and slice_i < self.data_handling.magn_slices.shape[0]:
+                self.slice = slice_i
+
+                self.set_slice_label()
+                self.update_plot()
 
     @pyqtSlot()
     def browse_folder_h5(self):
@@ -120,6 +162,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to choose a
             # dataset:
+            self.select_box.listWidget.clear()
             for name in self.filename:
                 self.select_box.listWidget.addItem(name)
             # When user chooses dataset in the select_box, read_data() is called.
@@ -193,6 +236,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
             # dataset:
+            self.select_box.listWidget.clear()
             for name in self.filename:
                 self.select_box.listWidget.addItem(name)
             # When user chooses dataset in the select_box, read_data() is called.
@@ -300,6 +344,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         else:
             raise Exception(f'Invalid text of ImageViewer.comboBox_magn_phase: {self.comboBox_magn_phase.currentText()}')
 
+        self.setFocus()  # To remove focus from comboBox (up and down key input would be stolen by it)
         self.data_handling.change_active_data()
         self.update_plot()
 
@@ -320,8 +365,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 self.slice = self.data_handling.active_data.shape[0] - 1
 
             # Set statistics value labels back to default (in case other file was loaded before):
-            self.label_mean_value.setText('-')
-            self.label_std_value.setText('-')
+            self.reset_statistics()
 
             # Actually plotting on canvas:
             self.mplWidget.create_plot()
@@ -372,6 +416,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         std_text = str(round(float(std), 3)) if 0.001 < abs(std) < 1000 else str(format(std, '.3e'))
         self.label_mean_value.setText(mean_text)
         self.label_std_value.setText(std_text)
+
+    def reset_statistics(self):
+        """
+        Sets statistics (mean and std) labels back to default.
+        """
+        self.label_mean_value.setText('-')
+        self.label_std_value.setText('-')
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
