@@ -6,7 +6,6 @@ from PyQt5 import QtWidgets
 from PyQt5.Qt import Qt
 from PyQt5.QtCore import QThreadPool, pyqtSlot
 import numpy as np
-from matplotlib import cm
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
 from imageviewer.ui import mainWindow, selectBox
@@ -31,8 +30,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :vartype dicom_sets: list[list[str]]
         :ivar slice: The number of the slice of the image data being displayed.
         :vartype slice: int
-        :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
-        :vartype cmap: str
         :ivar select_box: Window which lets user select a dataset within a selected file/directory.
         :vartype select_box: :class:`SelectBox`
         :ivar data_handling: Data is being processed and stored here.
@@ -49,15 +46,16 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.directory = ''
         self.dicom_sets = []
         self.slice = 0
-        self.cmap = 'plasma'
 
         # Connect UI signals to slots (functions):
         self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
         self.actionOpen_dcm.triggered.connect(self.browse_folder_dcm)
         self.actionQuit.triggered.connect(self.close)
 
-        self.menuColormap.triggered.connect(self.change_cmap)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
+        self.menuColormap.triggered.connect(self.mplWidget.change_cmap)
+        self.doubleSpinBox_colorscale_min.valueChanged.connect(self.mplWidget.change_cmin)
+        self.doubleSpinBox_colorscale_max.valueChanged.connect(self.mplWidget.change_cmax)
 
         self.mplWidget.toolbar.signals.rectangularSelection.connect(self.statistics)
         self.mplWidget.toolbar.signals.ellipseSelection.connect(self.statistics)
@@ -318,17 +316,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :type data: numpy.ndarray
         """
         self.data_handling.add_data(data)
-
-    @pyqtSlot()
-    def change_cmap(self):
-        """
-        Is called when user changes the colormap. Sets :attr:`cmap` to selected colormap, changes colormap of the
-        actual image in :attr:`mplWidget` and calls :meth:`update_plot`.
-        """
-        self.cmap = self.menuColormap.sender().text().lower()
-        if not self.mplWidget.empty:
-            self.mplWidget.im.cmap = cm.get_cmap(self.cmap)
-            self.update_plot()
 
     @pyqtSlot()
     def change_magn_phase(self):
