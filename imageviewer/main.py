@@ -115,11 +115,21 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             else:
                 self.mplWidget.zoom_plot('out')
 
+    def mousePressEvent(self, event):
+        """
+        Sets focus on self.
+        """
+        if event.buttons() == Qt.LeftButton:
+            self.setFocus()
+
+    def closeEvent(self, event):
+        self.close()
 
     def close(self):
         """
         Exits the application.
         """
+        self.select_box.cancel()
         sys.exit()
 
 
@@ -432,8 +442,8 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         Closes the window and sets :attr:`~SelectBox.selected` back to `None`.
         """
         self.selected = None
-        self.hide()
         self.listWidget.clear()
+        self.hide()
 
     def confirm(self):
         """

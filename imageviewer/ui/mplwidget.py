@@ -342,15 +342,15 @@ class MplWidget(QWidget):
         :vartype cmap: str
         :ivar im: The image which gets displayed.
         :vartype im: :class:`matplotlib.image.AxesImage`
-        :ivar data_min: Minimum value of currently loaded data (:varref:`.DataHandling.active_data`).
+        :ivar data_min: Minimum value of currently loaded data (:attr:`.DataHandling.active_data`).
         :vartype data_min: float
-        :ivar data_max: Maximum value of currently loaded data (:varref:`.DataHandling.active_data`).
+        :ivar data_max: Maximum value of currently loaded data (:attr:`.DataHandling.active_data`).
         :vartype data_max: float
         :ivar data_color_min: Minimum limit for color scale for the currently loaded data. Will be used for
-            :paramref:`clim` parameter of :varref:`im`.
+            :paramref:`clim` parameter of :attr:`im`.
         :vartype data_color_min: float
         :ivar data_color_max: Maximum limit for color scale for the currently loaded data. Will be used for
-            :paramref:`clim` parameter of :varref:`im`.
+            :paramref:`clim` parameter of :attr:`im`.
         :vartype data_color_max: float
         :ivar color_min: Value between 0 and 1 which represents the minimum limit of the color scale. This value is
             equal to what the user sets in the GUI.
@@ -365,6 +365,8 @@ class MplWidget(QWidget):
         QWidget.__init__(self, parent)
 
         self.canvas = FigureCanvas(Figure())
+        self.canvas.mousePressEvent = self.mousePressEvent
+        self.canvas.mouseMoveEvent = self.mouseMoveEvent
         self.canvas.axes = self.canvas.figure.add_subplot(111)
         self.canvas.axes.axis('off')
         self.toolbar = NavigationToolbar(self.canvas, self)
@@ -377,11 +379,78 @@ class MplWidget(QWidget):
         self.data_color_max = None
         self.color_min = 0
         self.color_max = 1
+        self.cursor_x = None
+        self.cursor_y = None
 
         vertical_layout = QVBoxLayout()
         vertical_layout.addWidget(self.canvas)
         vertical_layout.addWidget(self.toolbar)
         self.setLayout(vertical_layout)
+
+    def mousePressEvent(self, event):
+        """
+        Handles events caused by pressing mouse buttons.
+
+        Sets focus on main window (:class:`.ImageViewer`) if left mouse button was pressed. Saves current cursor
+        position when middle button (wheel) was pressed.
+
+        :param event: Instance of a PyQt input event.
+        :type event: :class:`QMouseEvent`
+        """
+        if event.buttons() == Qt.LeftButton:
+            self.setFocus()
+        elif event.buttons() == Qt.MidButton:
+            self.cursor_x = event.x()
+            self.cursor_y = event.y()
+
+    def mouseMoveEvent(self, event):
+        """
+        Handles mouse moving while middle button (wheel) is being pressed. Adjusts color range limits if movement
+        direction is vertical (upwards narrows the range, downwards widens it). Horizontal movement changes the
+        middle of the color range (right movement sets it higher, left movement lower). :meth:`change_cmin` and
+        :meth:`change_cmax` are triggered because of this.
+
+        :param event: Instance of a PyQt input event.
+        :type event: :class:`QMouseEvent`
+        """
+        # Adjusting color limits of plot via mouse movements while midbutton (mousewheel) is pressed:
+        if event.buttons() == Qt.MidButton:
+            scale = 4  # The lower, the more sensitive to movement.
+
+            old_min = self.imageViewer.doubleSpinBox_colorscale_min.value()
+            old_max = self.imageViewer.doubleSpinBox_colorscale_max.value()
+            x_diff = event.x() - self.cursor_x
+            y_diff = self.cursor_y - event.y()
+
+            if abs(x_diff) >= abs(y_diff):
+                # (Mainly) Horizontal movement; altering middle of color range:
+                new_min = old_min + int(x_diff/scale)*0.01
+                new_max = old_max + int(x_diff/scale)*0.01
+                if new_min < 0:
+                    # Setting to lowest possible interval:
+                    new_min = 0
+                    new_max = old_max - old_min
+                elif new_max > 1:
+                    # Setting to highest possible interval:
+                    new_min = old_min + (1 - old_max)
+                    new_max = 1
+            else:
+                # (Mainly) Vertical movement; altering limits of color range:
+                new_min = old_min + int(y_diff/scale)*0.01
+                new_max = old_max - int(y_diff/scale)*0.01
+                if y_diff > 0 and old_max-old_min <= 0.02:
+                    # Do not move limits closer to each other, keep them as they are:
+                    new_min = old_min
+                    new_max = old_max
+                if new_min >= new_max:
+                    # Min would be higher than max limit, get them really close instead:
+                    new_min = round(old_min + old_max, 2) * 0.5
+                    new_max = new_min + 0.01
+
+            self.imageViewer.doubleSpinBox_colorscale_min.setValue(new_min)
+            self.imageViewer.doubleSpinBox_colorscale_max.setValue(new_max)
+            self.cursor_x = event.x()
+            self.cursor_y = event.y()
 
     def create_plot(self):
         """
@@ -578,11 +647,9 @@ class MplWidget(QWidget):
                 self.im.set_clim([self.data_color_min, self.data_color_max])
                 self.canvas.draw()
         else:
-            # Change forbidden (minimum cannot be higher than maximum value). Set min=max:
-            self.color_min = self.imageViewer.doubleSpinBox_colorscale_max.value()
+            # Change forbidden (minimum cannot be higher than maximum value). Set min=max-0.01:
+            self.color_min = self.imageViewer.doubleSpinBox_colorscale_max.value() - 0.01
             self.imageViewer.doubleSpinBox_colorscale_min.setValue(self.color_min)
-
-        self.imageViewer.setFocus()
 
     @pyqtSlot()
     def change_cmax(self):
@@ -598,8 +665,6 @@ class MplWidget(QWidget):
                 self.im.set_clim([self.data_color_min, self.data_color_max])
                 self.canvas.draw()
         else:
-            # Change forbidden (minimum cannot be higher than maximum value). Set max=min:
-            self.color_max = self.imageViewer.doubleSpinBox_colorscale_min.value()
+            # Change forbidden (minimum cannot be higher than maximum value). Set max=min-0.01:
+            self.color_max = self.imageViewer.doubleSpinBox_colorscale_min.value() + 0.01
             self.imageViewer.doubleSpinBox_colorscale_max.setValue(self.color_max)
-
-        self.imageViewer.setFocus()
