@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
 from PyQt5.QtGui import QIcon, QPixmap, QColor
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT
+from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.figure import Figure
 from matplotlib.widgets import RectangleSelector, EllipseSelector
 
@@ -174,7 +175,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         """
         self.rect_selector = RectangleSelector(self.canvas.axes, self.on_rect_select, drawtype='box',
                                                button=[1],  # only left mouse button
-                                               minspanx=0, minspany=0,
+                                               minspanx=1, minspany=1,
                                                spancoords='data',
                                                interactive=True,
                                                rectprops=dict(edgecolor='red', linewidth=1.5, alpha=1, fill=False))
@@ -259,7 +260,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         """
         self.ellipse_selector = EllipseSelector(self.canvas.axes, self.on_ellipse_select, drawtype='line',
                                                 button=[1],  # only left mouse button
-                                                minspanx=0, minspany=0,
+                                                minspanx=2, minspany=2,
                                                 spancoords='data',
                                                 interactive=True,
                                                 lineprops=dict(color='red', linewidth=1.5, alpha=1))
@@ -365,8 +366,8 @@ class MplWidget(QWidget):
         QWidget.__init__(self, parent)
 
         self.canvas = FigureCanvas(Figure())
-        self.canvas.mousePressEvent = self.mousePressEvent
-        self.canvas.mouseMoveEvent = self.mouseMoveEvent
+        self.canvas.mousePressEvent = self.canvasMousePressEvent
+        self.canvas.mouseMoveEvent = self.canvasMouseMoveEvent
         self.canvas.axes = self.canvas.figure.add_subplot(111)
         self.canvas.axes.axis('off')
         self.toolbar = NavigationToolbar(self.canvas, self)
@@ -402,6 +403,22 @@ class MplWidget(QWidget):
         elif event.buttons() == Qt.MidButton:
             self.cursor_x = event.x()
             self.cursor_y = event.y()
+
+    def canvasMousePressEvent(self, event):
+        """
+        Used to overwrite the default :meth:`FigureCanvasQT.mousePressEvent` method of :attr:`canvas`.
+
+        Does what original method does and then calls own :meth:`.mousePressEvent` method.
+
+        :param event: Instance of a PyQt input event.
+        :type event: :class:`QMouseEvent`
+        """
+        x, y = self.canvas.mouseEventCoords(event.pos())
+        button = self.canvas.buttond.get(event.button())
+        if button is not None:
+            FigureCanvasBase.button_press_event(self.canvas, x, y, button,
+                                                guiEvent=event)
+        self.mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         """
@@ -451,6 +468,19 @@ class MplWidget(QWidget):
             self.imageViewer.doubleSpinBox_colorscale_max.setValue(new_max)
             self.cursor_x = event.x()
             self.cursor_y = event.y()
+
+    def canvasMouseMoveEvent(self, event):
+        """
+        Used to overwrite the default :meth:`FigureCanvasQT.mouseMoveEvent` method of :attr:`canvas`.
+
+        Does what original method does and then calls own :meth:`.mouseMoveEvent` method.
+
+        :param event: Instance of a PyQt input event.
+        :type event: :class:`QMouseEvent`
+        """
+        x, y = self.canvas.mouseEventCoords(event)
+        FigureCanvasBase.motion_notify_event(self.canvas, x, y, guiEvent=event)
+        self.mouseMoveEvent(event)
 
     def create_plot(self):
         """

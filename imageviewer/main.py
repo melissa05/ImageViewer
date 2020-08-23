@@ -170,9 +170,23 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to choose a
             # dataset:
-            self.select_box.listWidget.clear()
+            self.select_box.treeWidget.clear()
+            items = []
             for name in self.filename:
-                self.select_box.listWidget.addItem(name)
+                d = self.filename[name][()]
+                d = np.squeeze(d)
+                if d.ndim == 2:
+                    sl = '1'
+                    si = f'{d.shape[0]}x{d.shape[1]}'
+                else:
+                    sl = f'{d.shape[0]}'
+                    si = f'{d.shape[-2]}x{d.shape[-1]}'
+                item = QtWidgets.QTreeWidgetItem(self.select_box.treeWidget)
+                item.setText(0, name)
+                item.setText(1, sl)
+                item.setText(2, si)
+                items.append(item)
+            self.select_box.treeWidget.addTopLevelItems(items)
             # When user chooses dataset in the select_box, read_data() is called.
             self.select_box.show()
         else:
@@ -244,9 +258,19 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
             # dataset:
-            self.select_box.listWidget.clear()
-            for name in self.filename:
-                self.select_box.listWidget.addItem(name)
+            self.select_box.treeWidget.clear()
+            items = []
+            for i, name in enumerate(self.filename):
+                sl = str(len(self.dicom_sets[i]))
+                ref = pydicom.read_file(self.directory + name)
+                si = f'{ref.Rows}x{ref.Columns}'
+
+                item = QtWidgets.QTreeWidgetItem(self.select_box.treeWidget)
+                item.setText(0, name)
+                item.setText(1, sl)
+                item.setText(2, si)
+                items.append(item)
+            self.select_box.treeWidget.addTopLevelItems(items)
             # When user chooses dataset in the select_box, read_data() is called.
             self.select_box.show()
         else:
@@ -386,8 +410,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :type selector: str
         """
         # (x, y) coordinates = (col, row) indices of start and end points of selected rectangle:
-        start = tuple(int(i) for i in startposition)
-        end = tuple(int(i) for i in endposition)
+        start = tuple(int(np.ceil(i)) for i in startposition)
+        end = tuple(int(np.ceil(i)) for i in endposition)
         if selector == 'rectangle':
             mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
             std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
@@ -400,7 +424,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             x = np.arange(0, self.data_handling.active_data.shape[1])
             y = np.arange(0, self.data_handling.active_data.shape[2])[:,None]
 
-            contained_mask = ((x-x0)/a)**2 + ((y-y0)/b)**2 <= 1
+            contained_mask = ((x-x0)/a)**2 + ((y-y0)/b)**2 < 1
 
             mean = np.mean(self.data_handling.active_data[self.slice, :, :][contained_mask])
             std = np.std(self.data_handling.active_data[self.slice, :, :][contained_mask])
@@ -428,12 +452,21 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     """
     def __init__(self):
         """
+        :ivar treeWidget: Widget which is used to list all datasets to choose from. Has 3 columns: Dataset name, slices,
+            size.
+        :type treeWidget: QTreeWidget
         :ivar selected: Name of the selected file within the UI window.
         :vartype selected: None or str
         """
         super().__init__()
         self.setupUi(self)
+
+        self.treeWidget.setHeaderLabels(['Dataset name', 'Slices', 'Size'])
+        self.treeWidget.setColumnWidth(0, 400)
+        self.treeWidget.setColumnWidth(1, 50)
+
         self.buttonCancel.clicked.connect(self.cancel)
+
         self.selected = None
 
     @pyqtSlot()
@@ -442,16 +475,16 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         Closes the window and sets :attr:`~SelectBox.selected` back to `None`.
         """
         self.selected = None
-        self.listWidget.clear()
+        self.treeWidget.clear()
         self.hide()
 
     def confirm(self):
         """
         Stores the name of the selected dataset in :attr:`~SelectBox.selected` and closes the window.
         """
-        item = self.listWidget.selectedItems()[0]
-        self.selected = item.text()
-        self.listWidget.clear()
+        item = self.treeWidget.selectedItems()[0]
+        self.selected = item.text(0)
+        self.treeWidget.clear()
         self.hide()
 
 
@@ -516,6 +549,13 @@ class DataHandling:
             # There is one extra dimension we don't need, this happens in our test data; We should not encounter this
             # case in real life later on.
             self.original_data = np.squeeze(self.original_data[:, 0, :, :])
+            self.magn_slices = np.abs(self.original_data)
+            self.phase_slices = np.angle(self.original_data)
+
+        elif self.original_data.ndim == 5:
+            # There are two extra dimensions we don't need, this happens in our test data; We should not encounter this
+            # case in real life later on.
+            self.original_data = np.squeeze(self.original_data[:, 0, 0, :, :])
             self.magn_slices = np.abs(self.original_data)
             self.phase_slices = np.angle(self.original_data)
 
