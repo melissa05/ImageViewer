@@ -8,7 +8,7 @@ from PyQt5.QtCore import QThreadPool, pyqtSlot
 import numpy as np
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom
-from imageviewer.ui import mainWindow, selectBox
+from imageviewer.ui import mainWindow, selectBox, metadataWindow
 
 
 class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
@@ -50,6 +50,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         # Connect UI signals to slots (functions):
         self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
         self.actionOpen_dcm.triggered.connect(self.browse_folder_dcm)
+        self.action_metadata.triggered.connect(self.show_metadata)
         self.actionQuit.triggered.connect(self.close)
 
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
@@ -64,6 +65,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
         self.select_box = SelectBox()
         self.select_box.buttonOk.clicked.connect(self.read_data)
+
+        # Metadata Window:
+        self.metadata_window = MetadataWindow()
 
         # Object for storing and handling data:
         self.data_handling = DataHandling()
@@ -300,10 +304,14 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # .h5 file shall be read.
             self.set_patientdata_labels_h5()
             get_file_content_thread = GetFileContentH5(self.filename, self.select_box.selected)
+            self.action_metadata.setEnabled(False)
+            self.directory = ''
+            self.dicom_sets = []
         elif isinstance(self.filename, list) and '.dcm' in self.filename[0].lower():
             # .dcm file shall be read.
             self.set_patientdata_labels_dicom()
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
+            self.action_metadata.setEnabled(True)
 
         get_file_content_thread.signals.add_data.connect(self.add_data)
         get_file_content_thread.signals.finished.connect(self.plot_data)
@@ -445,6 +453,14 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.label_mean_value.setText('-')
         self.label_std_value.setText('-')
 
+    @pyqtSlot()
+    def show_metadata(self):
+        """
+        Calls :meth:`.MetadataWindow.open`.
+        """
+        if self.dicom_sets:
+            self.metadata_window.open(self.directory + self.select_box.selected)
+
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     """
@@ -486,6 +502,74 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         self.selected = item.text(0)
         self.treeWidget.clear()
         self.hide()
+
+
+class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
+    """
+    Window for showing metadata of dicom files.
+    """
+    def __init__(self):
+        """
+        :ivar treeWidget: Widget which is used to list all metadata instances. Its 4 columns are Tag, Name, VR, Value.
+        :type treeWidget: QTreeWidget
+        :ivar lineEdit: Input field used for search terms.
+        :type lineEdit: QLineEdit
+        """
+        super().__init__()
+        self.setupUi(self)
+
+        # Setting column width of TreeWidget:
+        self.treeWidget.setColumnWidth(0, 80)
+        self.treeWidget.setColumnWidth(1, 170)
+        self.treeWidget.setColumnWidth(2, 20)
+
+        # Connecting signals to slots:
+        self.lineEdit.textChanged.connect(self.search_update)
+        self.buttonClose.clicked.connect(self.cancel)
+
+    @pyqtSlot()
+    def cancel(self):
+        """
+        Closes the window.
+        """
+        self.treeWidget.clear()
+        self.hide()
+
+    def open(self, file):
+        """
+        Populates :attr:`treeWidget` with the metadata of the given file and shows the window.
+
+        :param file: Full filename including path of the dicom file to read metadata from.
+        :type file: str
+        """
+        self.treeWidget.clear()
+        items = []
+        metadata = pydicom.filereader.dcmread(file)
+        for elem in metadata.iterall():
+            item = QtWidgets.QTreeWidgetItem(self.treeWidget)
+            item.setText(0, str(elem.tag))
+            item.setText(1, str(elem.name))
+            item.setText(2, str(elem.VR))
+            item.setText(3, str(elem.value))
+            items.append(item)
+        self.treeWidget.addTopLevelItems(items)
+        self.show()
+
+    @pyqtSlot()
+    def search_update(self):
+        """
+        Hides all items in :attr:`treeWidget` whose names do not include the current text in :attr:`lineEdit`.
+        """
+        items_matched = self.treeWidget.findItems(self.lineEdit.text(), Qt.MatchContains, 1)
+
+        iterator = QtWidgets.QTreeWidgetItemIterator(self.treeWidget)
+        while iterator.value():
+            item = iterator.value()
+            if item in items_matched:
+                item.setHidden(False)
+            else:
+                item.setHidden(True)
+            iterator += 1
 
 
 class DataHandling:

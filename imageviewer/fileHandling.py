@@ -108,7 +108,7 @@ class IdentifyDatasetsDicom(QRunnable):
         :type filenames: list[str]
         """
         super().__init__()
-        self.filenames = filenames
+        self.filenames = sorted(filenames)
         self.signals = IdentifyDatasetsDicomSignals()
 
     def run(self):
@@ -141,7 +141,6 @@ class IdentifyDatasetsDicom(QRunnable):
                     # Loop is at last iteration, the current f_set is complete and the last set.
                     file_sets.append(f_set)
 
-        # print('Number of sets: ', len(file_sets))
         self.signals.setsIdentified.emit(file_sets)
 
 

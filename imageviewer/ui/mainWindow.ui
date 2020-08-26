@@ -397,6 +397,8 @@
     <addaction name="actionOpen_h5"/>
     <addaction name="actionOpen_dcm"/>
     <addaction name="separator"/>
+    <addaction name="action_metadata"/>
+    <addaction name="separator"/>
     <addaction name="actionQuit"/>
    </widget>
    <widget class="QMenu" name="menuColormap">
@@ -424,17 +426,23 @@
     <string>Quit</string>
    </property>
   </action>
-  <action name="actionTest">
-   <property name="text">
-    <string>test</string>
-   </property>
-  </action>
   <action name="actionOpen_dcm">
    <property name="text">
     <string>Open DICOM</string>
    </property>
    <property name="toolTip">
     <string>Lets you select a folder with DCM files.</string>
+   </property>
+  </action>
+  <action name="action_metadata">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Metadata</string>
+   </property>
+   <property name="toolTip">
+    <string>Opens window with dicom metadata.</string>
    </property>
   </action>
   <actiongroup name="groupColormap">
