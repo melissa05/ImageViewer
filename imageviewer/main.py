@@ -46,6 +46,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.directory = ''
         self.dicom_sets = []
         self.slice = 0
+        self.mean = None
+        self.std = None
 
         # Connect UI signals to slots (functions):
         self.actionOpen_h5.triggered.connect(self.browse_folder_h5)
@@ -136,7 +138,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.select_box.cancel()
         sys.exit()
 
-
     def change_slice(self, d):
         """
         Changes the current slice of data (if not out of range for the current dataset).
@@ -160,7 +161,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
         if filename:
-            self.filename = h5py.File(filename)
+            self.filename = h5py.File(filename, 'r')
             self.open_file_h5()
 
     def open_file_h5(self):
@@ -231,7 +232,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             else:
                 # There is only one dicom file. Usually this should not be the case, as this is not how the dicom
                 # format is intended.
-                # Set some attributes manually that usually would be set by classes and functions, because
+                # Set some attributes here that usually would be set by other classes and functions, because
                 # set_patientdata_labels_dicom() and GetFileContentDicom() will use it:
                 self.filename = filenames
                 self.dicom_sets = [self.filename]
@@ -324,7 +325,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Sets the label for current slice to according value.
         """
-        self.label_slice.setText(f'Slice {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
+        self.label_slice.setText(f'Slice: {self.slice + 1}/{self.data_handling.active_data.shape[0]}')
 
     def set_patientdata_labels_h5(self):
         """
@@ -421,28 +422,32 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         start = tuple(int(np.ceil(i)) for i in startposition)
         end = tuple(int(np.ceil(i)) for i in endposition)
         if selector == 'rectangle':
-            mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
-            std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
+            self.mean = np.mean(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
+            self.std = np.std(self.data_handling.active_data[self.slice, start[1]:end[1], start[0]:end[0]])
 
         elif selector == 'ellipse':
-            horizontal = abs(start[0] - end[0]); a = horizontal/2
-            vertical = abs(start[1] - end[1]); b = vertical/2
-            center = (start[0]+a, start[1]+b); x0 = center[0]; y0 = center[1]
+            horizontal = abs(start[0] - end[0])
+            a = horizontal/2
+            vertical = abs(start[1] - end[1])
+            b = vertical/2
+            center = (start[0]+a, start[1]+b)
+            x0 = center[0]
+            y0 = center[1]
 
             x = np.arange(0, self.data_handling.active_data.shape[1])
-            y = np.arange(0, self.data_handling.active_data.shape[2])[:,None]
+            y = np.arange(0, self.data_handling.active_data.shape[2])[:, None]
 
             contained_mask = ((x-x0)/a)**2 + ((y-y0)/b)**2 < 1
 
-            mean = np.mean(self.data_handling.active_data[self.slice, :, :][contained_mask])
-            std = np.std(self.data_handling.active_data[self.slice, :, :][contained_mask])
+            self.mean = np.mean(self.data_handling.active_data[self.slice, :, :][contained_mask])
+            self.std = np.std(self.data_handling.active_data[self.slice, :, :][contained_mask])
 
         else:
-            raise Exception('Valid values for parameter selector are "rectangle" and "ellipse", got {} '
+            raise Exception('Valid values for parameter selector are "rectangle" and "ellipse", got "{}" '
                             'instead.'.format(selector))
 
-        mean_text = str(round(float(mean), 3)) if 0.001 < abs(mean) < 1000 else str(format(mean, '.3e'))
-        std_text = str(round(float(std), 3)) if 0.001 < abs(std) < 1000 else str(format(std, '.3e'))
+        mean_text = str(round(float(self.mean), 4)) if 0.001 < abs(self.mean) < 1000 else str(format(self.mean, '.3e'))
+        std_text = str(round(float(self.std), 4)) if 0.001 < abs(self.std) < 1000 else str(format(self.std, '.3e'))
         self.label_mean_value.setText(mean_text)
         self.label_std_value.setText(std_text)
 
@@ -524,7 +529,7 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
         self.treeWidget.setColumnWidth(2, 20)
 
         # Connecting signals to slots:
-        self.lineEdit.textChanged.connect(self.search_update)
+        self.lineEdit.textChanged.connect(self.filter)
         self.buttonClose.clicked.connect(self.cancel)
 
     @pyqtSlot()
@@ -556,7 +561,7 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
         self.show()
 
     @pyqtSlot()
-    def search_update(self):
+    def filter(self):
         """
         Hides all items in :attr:`treeWidget` whose names do not include the current text in :attr:`lineEdit`.
         """
@@ -648,10 +653,7 @@ class DataHandling:
     def change_active_data(self):
         """
         Changes the value of :attr:`active_data` to either :attr:`magn_slices` or :attr:`phase_slices` depending on
-        the value of :paramref:`magnitude`.
-
-        :param magnitude: Indicates whether magnitude or phase of data is currently selected by the user.
-        :type magnitude: bool
+        the value of attribute :attr:`magnitude`.
         """
         if isinstance(self.active_data, np.ndarray):
             self.active_data = self.magn_slices if self.magnitude else self.phase_slices
@@ -676,17 +678,3 @@ class DataHandling:
         self.magn_slices = 0
         self.phase_slices = 0
         self.active_data = 0
-
-    def show_data(self):
-        """
-        Prints type and shape of :attr:`data`.
-        """
-        print('Data Type  ', type(self.original_data))
-        print('Data Shape  ', self.original_data.shape)
-
-
-def main():
-    app = QtWidgets.QApplication(sys.argv)
-    form = ImageViewer()
-    form.show()
-    app.exec_()

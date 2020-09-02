@@ -1,13 +1,15 @@
 import unittest
+import os
 import h5py
+import pydicom
 import numpy as np
 import numpy.testing as npt
-import math
+from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtTest import QTest
-from PyQt5.QtCore import Qt
+# from PyQt5.QtTest import QTest
 
-from imageviewer.main import *
+from imageviewer.main import ImageViewer, SelectBox, MetadataWindow, DataHandling
+from imageviewer.fileHandling import IdentifyDatasetsDicom, GetFileContentDicom
 
 
 app = QApplication([])
@@ -27,10 +29,10 @@ class TestImageViewer(unittest.TestCase):
         # Direct attributes:
         self.assertEqual(self.viewer.filename, '')
         self.assertEqual(self.viewer.slice, 0)
-        self.assertEqual(self.viewer.cmap, 'plasma')
+        self.assertEqual(self.viewer.mplWidget.cmap, 'plasma')
 
         # GUI:
-        self.assertEqual(self.viewer.slice_label.text(), 'Slice -/-')
+        self.assertEqual(self.viewer.label_slice.text(), 'Slice: -/-')
         self.assertTrue(self.viewer.actionPlasma.isChecked())
         self.assertFalse(self.viewer.actionViridis.isChecked())
         self.assertFalse(self.viewer.actionGray.isChecked())
@@ -45,225 +47,247 @@ class TestImageViewer(unittest.TestCase):
         self.assertTrue(self.viewer.actionViridis.isChecked())
         self.assertFalse(self.viewer.actionPlasma.isChecked())
         self.assertFalse(self.viewer.actionGray.isChecked())
+        self.assertEqual(self.viewer.mplWidget.cmap, 'viridis')
 
         self.viewer.actionGray.trigger()
         self.assertTrue(self.viewer.actionGray.isChecked())
         self.assertFalse(self.viewer.actionPlasma.isChecked())
         self.assertFalse(self.viewer.actionViridis.isChecked())
+        self.assertEqual(self.viewer.mplWidget.cmap, 'gray')
 
         self.viewer.actionPlasma.trigger()
         self.assertTrue(self.viewer.actionPlasma.isChecked())
         self.assertFalse(self.viewer.actionViridis.isChecked())
         self.assertFalse(self.viewer.actionGray.isChecked())
+        self.assertEqual(self.viewer.mplWidget.cmap, 'plasma')
+
+    def test_statistics_rectangle(self):
+        """
+        Tests :meth:`~imageviewer.main.ImageViewer.statistics` in the case of a rectangle selector.
+        """
+        # Setting prerequisites:
+        self.viewer.filename = h5py.File('data/test_data.h5', 'r')
+        self.viewer.select_box.selected = 'M0_final'
+        self.viewer.data_handling.active_data = np.expand_dims(
+                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=0)
+
+        # Calling function under test:
+        self.viewer.statistics((0.2, -0.7), (94.3, 45.9), 'rectangle')
+
+        # Assertions:
+        self.assertEqual(self.viewer.label_mean_value.text(), '0.0038')
+        self.assertEqual(self.viewer.label_std_value.text(), '0.0082')
+
+    def test_statistics_ellipse(self):
+        """
+        Tests :meth:`~imageviewer.main.ImageViewer.statistics` in the case of an ellipse selector.
+        """
+        # Setting prerequisites:
+        self.viewer.filename = h5py.File('data/test_data.h5', 'r')
+        self.viewer.select_box.selected = 'M0_final'
+        self.viewer.data_handling.active_data = np.expand_dims(
+                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=0)
+
+        # Calling function under test:
+        self.viewer.statistics((0.2, -0.7), (94.3, 45.9), 'ellipse')
+
+        # Assertions:
+        self.assertEqual(self.viewer.label_mean_value.text(), '0.0037')
+        self.assertEqual(self.viewer.label_std_value.text(), '0.008')
 
 
-# class TestFileLoad(unittest.TestCase):
-#     def setUp(self):
-#         self.viewer = ImageViewer()
-#
-#     def test_h5_one_dataset(self):
-#         # TODO: This test does not work. Fix it.
-#         self.viewer.filename = h5py.File('data/defined_8_8_one_set.h5')
-#         print(self.viewer.filename, type(self.viewer.filename))
-#         self.viewer.open_file()
-#         self.assertNotEqual(self.viewer.data_handling.magn_values, 0)
-#         self.assertNotEqual(self.viewer.data_handling.data, 0)
-
-
-class TestAddData(unittest.TestCase):
+class TestFileLoad(unittest.TestCase):
     """
-    Class for testing :meth:`~imageviewer.main.ImageViewer.add_data` method of the
-    :class:`~imageviewer.main.ImageViewer` class, which simply calls the
-    :meth:`~imageviewer.main.DataHandling.add_data` method of the :class:`~imageviewer.main.DataHandling` class.
-
-    I am not sure if these kinds of tests make much sense, since in the tested functions only numpy functions are called
-    and nothing should go wrong by that.
+    Tests file and data loading functionality of :class:`~imageviewer.main.ImageViewer` and
+    :mod:`imageviewer.fileHandling`.
     """
     def setUp(self):
         self.viewer = ImageViewer()
 
-    ### 2-dimensional tests, only one slice of data
-    def test_same_real_and_imag_2x2_int(self):
+    def test_identify_datasets_dicom(self):
         """
-        Testing the method DataHandling.add_data() called by ImageViewer.add_data() with a one slice of data containing
-        complex numbers x + ix where x is an integer (case where x=0 occurs).
-        :return: None.
+        Tests :meth:`~imageviewer.fileHandling.IdentifyDatasetsDicom.run`.
         """
-        # Creating data:
-        b = 1
-        c = 2
-        d = 3
-        arr = np.array([[0, b],
-                        [c, d]])
-        data = create_custom_complex_2dim_data(arr, arr)
+        # Setting prerequisites:
+        self.viewer.directory = 'data/dicom_multi/'
+        filenames = [f for f in os.listdir(self.viewer.directory)
+                     if os.path.isfile(os.path.join(self.viewer.directory, f)) and '.dcm' in f.lower()]
 
-        # Calling the function under test:
-        self.viewer.add_data(data=data)
+        # Calling function under test:
+        identify_datasets_dicom = IdentifyDatasetsDicom(filenames)
+        identify_datasets_dicom.run()
 
-        # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.data_handling.data, data,
-                               err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[0, 2 ** 0.5 * b],
-                                                                              [2**0.5 * c, 2**0.5 * d]],
-                                      err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[0, math.radians(45)],
-                                                                               [math.radians(45), math.radians(45)]],
-                                      err_msg='Phase failed.')
+        # Assertions:
+        self.assertEqual(len(identify_datasets_dicom.file_sets), 8, 'Wrong number of filesets detected.')
+        self.assertEqual(len(identify_datasets_dicom.file_sets[0]), 32, 'Wrong number of files of fileset detected.')
+        self.assertEqual(len(identify_datasets_dicom.file_sets[1]), 28, 'Wrong number of files of fileset detected.')
+        self.assertEqual(len(identify_datasets_dicom.file_sets[2]), 32, 'Wrong number of files of fileset detected.')
+        self.assertEqual(len(identify_datasets_dicom.file_sets[7]), 22, 'Wrong number of files of fileset detected.')
+        file_set_names = ['VFA_learni001701990001000100010001.DCM', 'VFA_learni002801990005000100010001.DCM',
+                          'VFA_learni003901990001000100010001.DCM', 'VFA_learni005001990001000100010001.DCM',
+                          'VFA_learni006101990001000100010001.DCM', 'VFA_learni007201990001000100010001.DCM',
+                          'VFA_learni008301990001000100010001.DCM', 'VFA_learni009401990001000100010001.DCM']
+        self.assertEqual([f_set[0] for f_set in identify_datasets_dicom.file_sets], file_set_names, 'Wrong first file '
+                                                                                                    'of fileset.')
 
-        # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
-
-    def test_same_real_and_imag_2x2_float(self):
+    def test_open_dicom(self):
         """
-        Testing the method DataHandling.add_data() called by ImageViewer.add_data() with a one slice of data containing
-        complex numbers x + ix where x is a float.
-        :return: None.
+        Tests :meth:`~imageviewer.main.ImageViewer.open_file_dcm` in the case of a single dicom fileset containing
+        multiple files.
+
+        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.set_patientdata_labels_dicom`,
+        :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.set_slice_label`,
+        these methods are also being tested along the way. Normally, the function would start the thread of
+        :class:`~imageviewer.fileHandling.GetFileContentDicom`, so the
+        :meth:`~imageviewer.main.fileHandling.GetFileContentDicom.run` method of it is also called and tested.
         """
-        # Creating data:
-        a = 0.5
-        b = 1.45632
-        c = 2.0
-        d = 3.1415926
-        arr = np.array([[a, b],
-                        [c, d]])
-        data = create_custom_complex_2dim_data(arr, arr)
+        # Setting prerequisites:
+        self.viewer.directory = 'data/dicom_single/'
+        self.viewer.dicom_sets = [[f for f in os.listdir(self.viewer.directory)
+                                   if os.path.isfile(os.path.join(self.viewer.directory, f)) and '.dcm' in f.lower()]]
 
-        # Calling the function under test:
-        self.viewer.add_data(data=data)
+        # Calling function under test:
+        self.viewer.open_file_dcm(self.viewer.dicom_sets)
 
-        # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.data_handling.data, data,
-                               err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[2 ** 0.5 * a, 2 ** 0.5 * b],
-                                                                              [2**0.5 * c, 2**0.5 * d]],
-                                      err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[math.radians(45), math.radians(45)],
-                                                                               [math.radians(45), math.radians(45)]],
-                                      err_msg='Phase failed.')
+        # Assertions:
+        self.assertEqual(self.viewer.filename, ['VFA_learni001701990001000100010001.DCM'])
+        self.assertEqual(self.viewer.label_name_value.text(), 'VFA_learning_test3')
+        self.assertEqual(self.viewer.label_age_value.text(), '029Y')
+        self.assertEqual(self.viewer.label_sex_value.text(), 'O')
+        self.assertEqual(self.viewer.label_date_value.text(), '2019/08/14')
 
-        # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
+        # Calling GetFileContentDicom.run() and ImageViewer functions (would be called when thread emits signals):
+        get_file_content_dicom = GetFileContentDicom(self.viewer.dicom_sets,
+                                                     self.viewer.filename[0],
+                                                     self.viewer.directory)
+        get_file_content_dicom.run()
+        self.viewer.add_data(get_file_content_dicom.data)
+        self.viewer.set_slice_label()
 
-    def test_same_real_and_imag_2x3_float(self):
+        # Getting the target data:
+        file_set = self.viewer.dicom_sets[0]
+        ref_data_dcm = pydicom.read_file(self.viewer.directory + file_set[0])
+        data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns), dtype=ref_data_dcm.pixel_array.dtype)
+        for filename in file_set:
+            slice_ = pydicom.read_file(self.viewer.directory + filename)
+            data[file_set.index(filename), :, :] = slice_.pixel_array
+
+        # Assertions:
+        npt.assert_array_equal(self.viewer.data_handling.original_data, data)
+        self.assertEqual(self.viewer.label_slice.text(), 'Slice: 1/32')
+
+    def test_open_h5(self):
         """
-        Testing the method DataHandling.add_data() called by ImageViewer.add_data() with a one slice of data containing
-        complex numbers x + ix where x is a float.
-        :return: None.
+        Tests :meth:`~imageviewer.main.ImageViewer.open_file_h5` in the case of a .h5 file containing 3 sets, where the
+        one selected has one slice.
+
+        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.read_data`,
+        :meth:`~imageviewer.main.ImageViewer.set_patientdata_labels_h5`,
+        :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.set_slice_label`,
+        these methods are also being tested along the way.
         """
-        # Creating data:
-        a = 0.5
-        b = 1.45632
-        c = 2.0
-        d = 3.1415926
-        e = 2.65457
-        f = 1.566
-        arr = np.array([[a, b],
-                        [c, d],
-                        [e, f]])
-        data = create_custom_complex_2dim_data(arr, arr)
+        # Setting prerequisites:
+        self.viewer.filename = h5py.File('data/test_data.h5', 'r')
 
-        # Calling the function under test:
-        self.viewer.add_data(data=data)
+        # Calling function under test:
+        self.viewer.open_file_h5()
 
-        # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.data_handling.data, data,
-                               err_msg='Data failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, [[2 ** 0.5 * a, 2 ** 0.5 * b],
-                                                                              [2**0.5 * c, 2**0.5 * d],
-                                                                              [2**0.5 * e, 2**0.5 * f]],
-                                      err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, [[math.radians(45), math.radians(45)],
-                                                                               [math.radians(45), math.radians(45)],
-                                                                               [math.radians(45), math.radians(45)]],
-                                      err_msg='Phase failed.')
+        # Assertions:
+        self.assertEqual(self.viewer.select_box.treeWidget.topLevelItemCount(), 3,
+                         'Wrong number of items in SelectBox.treeWidget.')
 
-        # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
+        # Simulating selection of item inside SelectBox:
+        item = QtWidgets.QTreeWidgetItem(self.viewer.select_box.treeWidget)
+        item.setText(0, 'M0_final')
+        item.setText(1, '1')
+        item.setText(2, '216x216')
+        self.viewer.select_box.treeWidget.setCurrentItem(item)
 
-    def test_different_real_and_imag_2x2_float(self):
+        # Calling function manually which would be called when user selects item:
+        self.viewer.read_data()
+
+        # Assertions:
+        self.assertFalse(self.viewer.action_metadata.isEnabled(), 'Action for showing metadata of dicom is enabled, '
+                                                                  'despite .h5 file being loaded.')
+        self.assertEqual(self.viewer.directory, '', 'No directory should be set because .h5 file is loaded.')
+        self.assertEqual(self.viewer.dicom_sets, [], 'Dicom sets should be empty because .h5 file is loaded.')
+        # Assertions regarding set_patientdata_labels_h5:
+        self.assertEqual(self.viewer.label_name_value.text(), '-')
+        self.assertEqual(self.viewer.label_age_value.text(), '-')
+        self.assertEqual(self.viewer.label_sex_value.text(), '-')
+        self.assertEqual(self.viewer.label_date_value.text(), '----/--/--')
+
+        # Calling functions which would be called when thread emits signals:
+        self.viewer.add_data(self.viewer.filename[self.viewer.select_box.selected][()])
+        self.viewer.set_slice_label()
+
+        # Assertions:
+        self.assertTrue(isinstance(self.viewer.data_handling.original_data, np.ndarray))
+        self.assertEqual(self.viewer.label_slice.text(), 'Slice: 1/1')
+
+
+class TestMetadataWindow(unittest.TestCase):
+    """
+    To test :class:`~imageviewer.main.MetadataWindow`.
+    """
+    def setUp(self):
+        self.mw = MetadataWindow()
+
+    def test_open(self):
         """
-        Testing the method DataHandling.add_data() called by ImageViewer.add_data() with a one slice of data containing
-        complex numbers x + iy where x and y are floats.
-        :return: None.
+        Tests :meth:`~imageviewer.main.MetadataWindow.open`.
         """
-        # Creating data:
-        a = 0.5
-        b = 1.45632
-        c = 2.0
-        d = 3.1415926
-        arr_r = np.array([[a, b],
-                          [c, d]])
-        arr_i = np.array([[b, c],
-                          [a, a]])
-        data = create_custom_complex_2dim_data(arr_r, arr_i)
+        # Calling function under test:
+        self.mw.open('data/dicom_single/VFA_learni001701990001000100010001.dcm')
+        # Assertions:
+        self.assertEqual(self.mw.treeWidget.topLevelItemCount(), 160)
 
-        # Calling the function under test:
-        self.viewer.add_data(data=data)
 
-        # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.data_handling.data, data,
-                               err_msg='Data failed.')
-        result_magn = np.array([[(a*a+b*b)**0.5, (b*b+c*c)**0.5],
-                                [(c*c+a*a)**0.5, (d*d+a*a)**0.5]])
-        result_phase = np.array([[np.angle(a+1j*b), np.angle(b+1j*c)],
-                                 [np.angle(c+1j*a), np.angle(d+1j*a)]])
-        npt.assert_array_almost_equal(self.viewer.data_handling.magn_values, result_magn, err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.phase_values, result_phase, err_msg='Phase failed.')
+class TestDataHandling(unittest.TestCase):
+    """
+    Tests :class:`~imageviewer.main.DataHandling`.
+    """
+    def setUp(self):
+        self.dataHandling = DataHandling()
 
-        # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.data_handling.magn_slices, 0, 'Magnitude Slices not 0.')
-        self.assertEqual(self.viewer.data_handling.phase_slices, 0, 'Phase Slices not 0.')
-
-    ### 3-dimensional tests, multiple slices of data
-    def test_different_real_and_imag_3_2x2_float(self):
+    def test_add_data_2dim(self):
         """
-        Testing the method DataHandling.add_data() called by ImageViewer.add_data() with a one slice of data containing
-        complex numbers x + iy where x and y are floats.
-        :return: None.
+        Tests :meth:`~imageviewer.main.DataHandling.add_data` with one-sliced (2-dimensional) data. Magnitude is wanted.
         """
-        # Creating data:
-        a = 0.5
-        b = 1.45632
-        c = 2.0
-        d = 3.1415926
-        arr_r = np.array([[a, b],
-                          [c, d]])
-        arr_i = np.array([[b, c],
-                          [a, a]])
-        data = create_custom_complex_3dim_data(arr_r, arr_i, 3)
+        # Setting prerequisites:
+        file = h5py.File('data/test_data.h5', 'r')
+        selected = 'M0_final'
+        data = file[selected][()]
 
-        # Calling the function under test:
-        self.viewer.add_data(data=data)
+        # Calling function under test:
+        self.dataHandling.add_data(data)
 
-        # Check if function calculated magnitude and phase properly:
-        npt.assert_array_equal(self.viewer.data_handling.data, data,
-                               err_msg='Data failed.')
-        arr_m = np.array([[(a*a+b*b)**0.5, (b*b+c*c)**0.5],
-                          [(c*c+a*a)**0.5, (d*d+a*a)**0.5]])
-        arr_p = np.array([[np.angle(a+1j*b), np.angle(b+1j*c)],
-                          [np.angle(c+1j*a), np.angle(d+1j*a)]])
-        magn_should = np.repeat(arr_m[np.newaxis, :, :], 3, axis=0)
-        phase_should = np.repeat(arr_p[np.newaxis, :, :], 3, axis=0)
-        npt.assert_array_almost_equal(self.viewer.data_handling.magn_slices, magn_should, err_msg='Magnitude failed.')
-        npt.assert_array_almost_equal(self.viewer.data_handling.phase_slices, phase_should, err_msg='Phase failed.')
+        # Assertions:
+        self.assertEqual(self.dataHandling.original_data.shape, (216, 216))
+        self.assertEqual(self.dataHandling.magn_slices.shape, (1, 216, 216))
+        self.assertEqual(self.dataHandling.phase_slices.shape, (1, 216, 216))
+        self.assertEqual(self.dataHandling.active_data.shape, (1, 216, 216))
+        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.magn_slices, 'active_data not equal '
+                                                                                             'to magn_slices.')
 
-        # Check if attributes that should not be affected in this scenario still have default values:
-        self.assertEqual(self.viewer.data_handling.magn_values, 0, 'Magnitude Values not 0.')
-        self.assertEqual(self.viewer.data_handling.phase_values, 0, 'Phase Values not 0.')
+    def test_add_data_3dim(self):
+        """
+        Tests :meth:`~imageviewer.main.DataHandling.add_data` with multi-sliced (3-dimensional) data. Phase is wanted.
+        """
+        # Setting prerequisites:
+        file = h5py.File('data/test_data.h5', 'r')
+        selected = 'full_result'
+        data = file[selected][()]
+        self.dataHandling.magnitude = False
 
+        self.dataHandling.add_data(data)
 
-def create_custom_complex_2dim_data(real, imaginary):
-    data = real + 1j * imaginary
-    return data
-
-
-def create_custom_complex_3dim_data(real, imaginary, n):
-    arr_2dim = real + 1j * imaginary
-    data = np.repeat(arr_2dim[None, ...], n, axis=0)
-    return data
+        self.assertEqual(self.dataHandling.original_data.shape, (13, 216, 216))
+        self.assertEqual(self.dataHandling.magn_slices.shape, (13, 216, 216))
+        self.assertEqual(self.dataHandling.phase_slices.shape, (13, 216, 216))
+        self.assertEqual(self.dataHandling.active_data.shape, (13, 216, 216))
+        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.phase_slices, 'active_data not equal '
+                                                                                              'to phase_slices.')
 
 
 if __name__ == '__main__':

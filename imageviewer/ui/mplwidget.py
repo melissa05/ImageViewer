@@ -110,7 +110,6 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.mplwidget.create_plot()
         self.mplwidget.imageViewer.reset_statistics()
 
-
     @pyqtSlot()
     def activate_rect_select(self):
         """

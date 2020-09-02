@@ -22,11 +22,6 @@ class GetFileContentSignals(QObject):
     """
     Class for generating thread signals for :class:`GetFileContent`.
     """
-    """
-    `<http://pyqt.sourceforge.net/Docs/PyQt5/signals_slots.html#defining-new-signals-with-pyqtsignal>`_
-    New signals can be defined as class attributes using the pyqtSignal() factory.
-    New signals should only be defined in sub-classes of QObject.
-    """
     add_data = pyqtSignal(object)
     finished = pyqtSignal()
 
@@ -37,8 +32,8 @@ class GetFileContentH5(GetFileContent):
     """
     def __init__(self, filename, selected):
         """
-        :param filename: The name of the selected file.
-        :type filename: str
+        :param filename: The selected .h5 file.
+        :type filename: h5py._hl.files.File
         :param selected: The name of the selected dataset within the file. If the file only contains one dataset, this
             needs to be the same as parameter :paramref:`filename`.
         :type selected: str
@@ -73,6 +68,7 @@ class GetFileContentDicom(GetFileContent):
         super().__init__(selected)
         self.file_sets = file_sets
         self.directory = directory
+        self.data = None
 
     def run(self):
         """
@@ -85,13 +81,13 @@ class GetFileContentDicom(GetFileContent):
             if file_set[0] == self.selected:
                 # First file within dataset is used for getting the numbers of rows and columns, and type of the data:
                 ref_data_dcm = pydicom.read_file(self.directory + file_set[0])
-                data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns),
+                self.data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns),
                                 dtype=ref_data_dcm.pixel_array.dtype)
                 for filename in file_set:
                     slice_ = pydicom.read_file(self.directory + filename)
-                    data[file_set.index(filename), :, :] = slice_.pixel_array
+                    self.data[file_set.index(filename), :, :] = slice_.pixel_array
 
-        self.signals.add_data.emit(data)
+        self.signals.add_data.emit(self.data)
         self.signals.finished.emit()
 
 
@@ -109,6 +105,7 @@ class IdentifyDatasetsDicom(QRunnable):
         """
         super().__init__()
         self.filenames = sorted(filenames)
+        self.file_sets = []
         self.signals = IdentifyDatasetsDicomSignals()
 
     def run(self):
@@ -124,7 +121,6 @@ class IdentifyDatasetsDicom(QRunnable):
 
         Gets called when the thread is started.
         """
-        file_sets = []
         f_set = [self.filenames[0]]
         for i in range(len(self.filenames) - 1):
             curr_f = self.filenames[i]
@@ -133,15 +129,15 @@ class IdentifyDatasetsDicom(QRunnable):
             if abs(diff_indx[0] - diff_indx[-1]) > 2:
                 # Now we have new dataset, because the filename strings differ at multiple indices which are apart.
                 # (If there is only one index at which the filenames differ, this would be False.)
-                file_sets.append(f_set)
+                self.file_sets.append(f_set)
                 f_set = [next_f]
             else:
                 f_set.append(next_f)
                 if i == len(self.filenames) - 2:
                     # Loop is at last iteration, the current f_set is complete and the last set.
-                    file_sets.append(f_set)
+                    self.file_sets.append(f_set)
 
-        self.signals.setsIdentified.emit(file_sets)
+        self.signals.setsIdentified.emit(self.file_sets)
 
 
 class IdentifyDatasetsDicomSignals(QObject):
