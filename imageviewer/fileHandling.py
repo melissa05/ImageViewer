@@ -110,7 +110,7 @@ class IdentifyDatasetsDicom(QRunnable):
 
     def run(self):
         """
-        This function looks at all filenames in parameter filenames separately and sorts them into sets.
+        This function looks at all filenames in parameter :paramref:`filenames` separately and sorts them into sets.
 
         It does so by comparing a filename to the next filename: if the filenames differ at at least two characters and
         the first and last different characters are more than 2 indices apart, they are considered to be of different
