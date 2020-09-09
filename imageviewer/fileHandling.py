@@ -82,7 +82,7 @@ class GetFileContentDicom(GetFileContent):
                 # First file within dataset is used for getting the numbers of rows and columns, and type of the data:
                 ref_data_dcm = pydicom.read_file(self.directory + file_set[0])
                 self.data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns),
-                                dtype=ref_data_dcm.pixel_array.dtype)
+                                     dtype=ref_data_dcm.pixel_array.dtype)
                 for filename in file_set:
                     slice_ = pydicom.read_file(self.directory + filename)
                     self.data[file_set.index(filename), :, :] = slice_.pixel_array

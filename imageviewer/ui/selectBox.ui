@@ -33,7 +33,7 @@
        <bool>false</bool>
       </property>
       <property name="columnCount">
-       <number>3</number>
+       <number>4</number>
       </property>
       <attribute name="headerCascadingSectionResizes">
        <bool>false</bool>
@@ -49,17 +49,22 @@
       </attribute>
       <column>
        <property name="text">
-        <string notr="true">1</string>
+        <string notr="true">Dataset name</string>
        </property>
       </column>
       <column>
        <property name="text">
-        <string notr="true">2</string>
+        <string notr="true">Slices</string>
        </property>
       </column>
       <column>
        <property name="text">
-        <string notr="true">3</string>
+        <string notr="true">Dynamics</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string notr="true">Size</string>
        </property>
       </column>
      </widget>

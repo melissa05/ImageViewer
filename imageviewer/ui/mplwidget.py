@@ -102,13 +102,17 @@ class NavigationToolbar(NavigationToolbar2QT):
 
     def home(self):
         """
-        Sets plot back to original view by calling :meth:`MplWidget.create_plot()`. All pan, zoom, and selection
-        settings are discarded, rotation not.
+        Sets plot back to original view by calling :meth:`MplWidget.create_plot()`.
 
-        Overwrites default function.
+        All pan, zoom, selection, and colorscale limits settings are discarded, rotation not. Also calls
+        :meth:`~imageviewer.main.ImageViewer.reset_statistics` and
+        :meth:`~imageviewer.main.ImageViewer.reset_colorscale_limits`.
+
+        Overwrites parent function.
         """
         self.mplwidget.create_plot()
         self.mplwidget.imageViewer.reset_statistics()
+        self.mplwidget.imageViewer.reset_colorscale_limits()  # Handles Spinboxes
 
     @pyqtSlot()
     def activate_rect_select(self):
@@ -342,21 +346,11 @@ class MplWidget(QWidget):
         :vartype cmap: str
         :ivar im: The image which gets displayed.
         :vartype im: :class:`matplotlib.image.AxesImage`
-        :ivar data_min: Minimum value of currently loaded data (:attr:`.DataHandling.active_data`).
-        :vartype data_min: float
-        :ivar data_max: Maximum value of currently loaded data (:attr:`.DataHandling.active_data`).
-        :vartype data_max: float
-        :ivar data_color_min: Minimum limit for color scale for the currently loaded data. Will be used for
+        :ivar color_min: Minimum limit for color scale for the currently loaded data. Will be used for
             :paramref:`clim` parameter of :attr:`im`.
-        :vartype data_color_min: float
-        :ivar data_color_max: Maximum limit for color scale for the currently loaded data. Will be used for
-            :paramref:`clim` parameter of :attr:`im`.
-        :vartype data_color_max: float
-        :ivar color_min: Value between 0 and 1 which represents the minimum limit of the color scale. This value is
-            equal to what the user sets in the GUI.
         :vartype color_min: float
-        :ivar color_max: Value between 0 and 1 which represents the maximum limit of the color scale. This value is
-            equal to what the user sets in the GUI.
+        :ivar color_max: Maximum limit for color scale for the currently loaded data. Will be used for
+            :paramref:`clim` parameter of :attr:`im`.
         :vartype color_max: float
         :ivar imageViewer: Instance of the main window the widget is part of. Allows access to data and variables. It
             is set in :class:`~imageviewer.main.ImageViewer`'s __init__().
@@ -373,12 +367,8 @@ class MplWidget(QWidget):
         self.empty = True
         self.cmap = 'plasma'
         self.im = None
-        self.data_min = None
-        self.data_max = None
-        self.data_color_min = None
-        self.data_color_max = None
-        self.color_min = 0
-        self.color_max = 1
+        self.color_min = None
+        self.color_max = None
         self.cursor_x = None
         self.cursor_y = None
 
@@ -432,6 +422,7 @@ class MplWidget(QWidget):
         # Adjusting color limits of plot via mouse movements while midbutton (mousewheel) is pressed:
         if event.buttons() == Qt.MidButton:
             scale = 4  # The lower, the more sensitive to movement.
+            step = self.imageViewer.doubleSpinBox_colorscale_min.singleStep()
 
             old_min = self.imageViewer.doubleSpinBox_colorscale_min.value()
             old_max = self.imageViewer.doubleSpinBox_colorscale_max.value()
@@ -439,29 +430,13 @@ class MplWidget(QWidget):
             y_diff = self.cursor_y - event.y()
 
             if abs(x_diff) >= abs(y_diff):
-                # (Mainly) Horizontal movement; altering middle of color range:
-                new_min = old_min + int(x_diff/scale)*0.01
-                new_max = old_max + int(x_diff/scale)*0.01
-                if new_min < 0:
-                    # Setting to lowest possible interval:
-                    new_min = 0
-                    new_max = old_max - old_min
-                elif new_max > 1:
-                    # Setting to highest possible interval:
-                    new_min = old_min + (1 - old_max)
-                    new_max = 1
+                # (Mainly) Horizontal movement; altering center of color range:
+                new_min = old_min + int(x_diff/scale)*step
+                new_max = old_max + int(x_diff/scale)*step
             else:
                 # (Mainly) Vertical movement; altering limits of color range:
-                new_min = old_min + int(y_diff/scale)*0.01
-                new_max = old_max - int(y_diff/scale)*0.01
-                if y_diff > 0 and old_max-old_min <= 0.02:
-                    # Do not move limits closer to each other, keep them as they are:
-                    new_min = old_min
-                    new_max = old_max
-                if new_min >= new_max:
-                    # Min would be higher than max limit, get them really close instead:
-                    new_min = round(old_min + old_max, 2) * 0.5
-                    new_max = new_min + 0.01
+                new_min = old_min + int(y_diff/scale)*step
+                new_max = old_max - int(y_diff/scale)*step
 
             self.imageViewer.doubleSpinBox_colorscale_min.setValue(new_min)
             self.imageViewer.doubleSpinBox_colorscale_max.setValue(new_max)
@@ -481,8 +456,22 @@ class MplWidget(QWidget):
         FigureCanvasBase.motion_notify_event(self.canvas, x, y, guiEvent=event)
         self.mouseMoveEvent(event)
 
+    def clear(self):
+        """
+        Resets attributes to initial values and clears the canvas.
+        """
+        self.im = None
+        self.color_min = None
+        self.color_max = None
+        self.cursor_x = None
+        self.cursor_y = None
+        self.empty = True
+        self.canvas.axes.clear()
+
     def create_plot(self):
         """
+        Used to create a plot and set attributes for a dataset.
+
         Clears :attr:`canvas.axes`, creates (new) image to show and draws it on :attr:`canvas`. It is intended to use
         this method when a new dataset or file is loaded.
 
@@ -493,18 +482,17 @@ class MplWidget(QWidget):
         See also: :meth:`update_plot`.
         """
         # Clearing Axes, setting title:
-        self.data_min = self.imageViewer.data_handling.active_data.min()
-        self.data_max = self.imageViewer.data_handling.active_data.max()
-        self.data_color_min = self.data_min + (self.data_max-self.data_min)*self.color_min
-        self.data_color_max = self.data_min + (self.data_max-self.data_min)*self.color_max
+        self.color_min = self.imageViewer.data_handling.active_min
+        self.color_max = self.imageViewer.data_handling.active_max
 
         self.canvas.axes.clear()
         self.canvas.axes.margins(0, 0)  # exact fit
         self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
 
         # Creating image:
-        self.im = self.canvas.axes.matshow(self.imageViewer.data_handling.active_data[self.imageViewer.slice, :, :],
-                                           cmap=self.cmap, clim=(self.data_color_min, self.data_color_max))
+        self.im = self.canvas.axes.matshow(self.imageViewer.data_handling.active_data[
+                                           self.imageViewer.slice, self.imageViewer.dynamic, :, :],
+                                           cmap=self.cmap, clim=(self.color_min, self.color_max))
         self.canvas.axes.axis('off')
 
         def format_coord(x, y):
@@ -535,15 +523,17 @@ class MplWidget(QWidget):
 
     def update_plot(self):
         """
-        Changes image data to currently active data and updates the plot. The toolbar functions and settings remain as
-        they are. It is intended to use this method when another image of the same dataset needs to be visualized (e.g.
-        after colormap was changed or another slice was selected).
+        Changes image data to currently active data and updates the plot.
+
+        The toolbar functions and settings remain as they are. It is intended to use this method when another image
+        of the same dataset needs to be visualized (e.g. after colormap was changed or another slice was selected).
 
         See also: :meth:`create_plot`.
         """
         self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
-        self.im.set_data(self.imageViewer.data_handling.active_data[self.imageViewer.slice, :, :])
-        self.im.set_clim([self.data_color_min, self.data_color_max])
+        self.im.set_data(self.imageViewer.data_handling.active_data[
+                         self.imageViewer.slice, self.imageViewer.dynamic, :, :])
+        self.im.set_clim([self.color_min, self.color_max])
         self.canvas.draw()
 
         # Emit rectangularSelection signal so the statistic labels get updated:
@@ -566,8 +556,8 @@ class MplWidget(QWidget):
         :type direction: str
         """
         if not self.empty:
-            max_x = self.imageViewer.data_handling.active_data.shape[1]
-            max_y = self.imageViewer.data_handling.active_data.shape[2]
+            max_x = self.imageViewer.data_handling.active_data.shape[-2]
+            max_y = self.imageViewer.data_handling.active_data.shape[-1]
             cur_xlim = self.canvas.axes.get_xlim()
             cur_ylim = self.canvas.axes.get_ylim()
             cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
@@ -604,8 +594,8 @@ class MplWidget(QWidget):
         :type direction: str
         """
         if not self.empty:
-            max_x = self.imageViewer.data_handling.active_data.shape[1] - 0.5
-            max_y = self.imageViewer.data_handling.active_data.shape[2] - 0.5
+            max_x = self.imageViewer.data_handling.active_data.shape[-2] - 0.5
+            max_y = self.imageViewer.data_handling.active_data.shape[-1] - 0.5
             cur_xlim = self.canvas.axes.get_xlim()
             cur_ylim = self.canvas.axes.get_ylim()
             cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
@@ -665,35 +655,35 @@ class MplWidget(QWidget):
     @pyqtSlot()
     def change_cmin(self):
         """
-        Changes :paramref:`color_min` and :paramref:`data_color_min` according to the user's input in the
+        Changes :paramref:`color_min` and :paramref:`color_min` according to the user's input in the
         :class:`ImageViewer` GUI and updates the image shown.
         """
         if self.imageViewer.doubleSpinBox_colorscale_min.value() <= self.color_max:
             # Change allowed, follow through with updating stuff:
             self.color_min = self.imageViewer.doubleSpinBox_colorscale_min.value()
-            if not self.empty:
-                self.data_color_min = self.data_min + (self.data_max-self.data_min)*self.color_min
-                self.im.set_clim([self.data_color_min, self.data_color_max])
-                self.canvas.draw()
         else:
-            # Change forbidden (minimum cannot be higher than maximum value). Set min=max-0.01:
-            self.color_min = self.imageViewer.doubleSpinBox_colorscale_max.value() - 0.01
+            # Change forbidden (minimum cannot be higher than maximum value). Set min=max-:
+            self.color_min = self.imageViewer.doubleSpinBox_colorscale_max.value()
             self.imageViewer.doubleSpinBox_colorscale_min.setValue(self.color_min)
+        # Update plot:
+        if not self.empty:
+            self.im.set_clim([self.color_min, self.color_max])
+            self.canvas.draw()
 
     @pyqtSlot()
     def change_cmax(self):
         """
-        Changes :paramref:`color_max` and :paramref:`data_color_max` according to the user's input in the
+        Changes :paramref:`color_max` and :paramref:`color_max` according to the user's input in the
         :class:`ImageViewer` GUI and updates the image shown.
         """
         if self.imageViewer.doubleSpinBox_colorscale_max.value() >= self.color_min:
             # Change allowed, follow through with updating stuff:
             self.color_max = self.imageViewer.doubleSpinBox_colorscale_max.value()
-            if not self.empty:
-                self.data_color_max = self.data_min + (self.data_max-self.data_min)*self.color_max
-                self.im.set_clim([self.data_color_min, self.data_color_max])
-                self.canvas.draw()
         else:
-            # Change forbidden (minimum cannot be higher than maximum value). Set max=min-0.01:
-            self.color_max = self.imageViewer.doubleSpinBox_colorscale_min.value() + 0.01
+            # Change forbidden (minimum cannot be higher than maximum value). Set max=min:
+            self.color_max = self.imageViewer.doubleSpinBox_colorscale_min.value()
             self.imageViewer.doubleSpinBox_colorscale_max.setValue(self.color_max)
+        # Update plot:
+        if not self.empty:
+            self.im.set_clim([self.color_min, self.color_max])
+            self.canvas.draw()

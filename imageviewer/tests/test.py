@@ -32,7 +32,6 @@ class TestImageViewer(unittest.TestCase):
         self.assertEqual(self.viewer.mplWidget.cmap, 'plasma')
 
         # GUI:
-        self.assertEqual(self.viewer.label_slice.text(), 'Slice: -/-')
         self.assertTrue(self.viewer.actionPlasma.isChecked())
         self.assertFalse(self.viewer.actionViridis.isChecked())
         self.assertFalse(self.viewer.actionGray.isChecked())
@@ -69,7 +68,7 @@ class TestImageViewer(unittest.TestCase):
         self.viewer.filename = h5py.File('data/test_data.h5', 'r')
         self.viewer.select_box.selected = 'M0_final'
         self.viewer.data_handling.active_data = np.expand_dims(
-                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=0)
+                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=(0, 1))
 
         # Calling function under test:
         self.viewer.statistics((0.2, -0.7), (94.3, 45.9), 'rectangle')
@@ -86,7 +85,7 @@ class TestImageViewer(unittest.TestCase):
         self.viewer.filename = h5py.File('data/test_data.h5', 'r')
         self.viewer.select_box.selected = 'M0_final'
         self.viewer.data_handling.active_data = np.expand_dims(
-                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=0)
+                np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=(0, 1))
 
         # Calling function under test:
         self.viewer.statistics((0.2, -0.7), (94.3, 45.9), 'ellipse')
@@ -162,7 +161,7 @@ class TestFileLoad(unittest.TestCase):
                                                      self.viewer.directory)
         get_file_content_dicom.run()
         self.viewer.add_data(get_file_content_dicom.data)
-        self.viewer.set_slice_label()
+        self.viewer.after_data_added()
 
         # Getting the target data:
         file_set = self.viewer.dicom_sets[0]
@@ -174,7 +173,10 @@ class TestFileLoad(unittest.TestCase):
 
         # Assertions:
         npt.assert_array_equal(self.viewer.data_handling.original_data, data)
-        self.assertEqual(self.viewer.label_slice.text(), 'Slice: 1/32')
+        self.assertEqual(self.viewer.spinBox_slice.value(), 1)
+        self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
+        self.assertEqual(self.viewer.label_slice_max.text(), '/32')
+        self.assertEqual(self.viewer.label_dynamic_max.text(), '/1')
 
     def test_open_h5(self):
         """
@@ -219,11 +221,14 @@ class TestFileLoad(unittest.TestCase):
 
         # Calling functions which would be called when thread emits signals:
         self.viewer.add_data(self.viewer.filename[self.viewer.select_box.selected][()])
-        self.viewer.set_slice_label()
+        self.viewer.after_data_added()
 
         # Assertions:
         self.assertTrue(isinstance(self.viewer.data_handling.original_data, np.ndarray))
-        self.assertEqual(self.viewer.label_slice.text(), 'Slice: 1/1')
+        self.assertEqual(self.viewer.spinBox_slice.value(), 1)
+        self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
+        self.assertEqual(self.viewer.label_slice_max.text(), '/1')
+        self.assertEqual(self.viewer.label_dynamic_max.text(), '/1')
 
 
 class TestMetadataWindow(unittest.TestCase):
@@ -264,11 +269,11 @@ class TestDataHandling(unittest.TestCase):
 
         # Assertions:
         self.assertEqual(self.dataHandling.original_data.shape, (216, 216))
-        self.assertEqual(self.dataHandling.magn_slices.shape, (1, 216, 216))
-        self.assertEqual(self.dataHandling.phase_slices.shape, (1, 216, 216))
-        self.assertEqual(self.dataHandling.active_data.shape, (1, 216, 216))
-        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.magn_slices, 'active_data not equal '
-                                                                                             'to magn_slices.')
+        self.assertEqual(self.dataHandling.magn_data.shape, (1, 1, 216, 216))
+        self.assertEqual(self.dataHandling.phase_data.shape, (1, 1, 216, 216))
+        self.assertEqual(self.dataHandling.active_data.shape, (1, 1, 216, 216))
+        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.magn_data, 'active_data not equal '
+                                                                                             'to magn_data.')
 
     def test_add_data_3dim(self):
         """
@@ -282,12 +287,12 @@ class TestDataHandling(unittest.TestCase):
 
         self.dataHandling.add_data(data)
 
-        self.assertEqual(self.dataHandling.original_data.shape, (13, 216, 216))
-        self.assertEqual(self.dataHandling.magn_slices.shape, (13, 216, 216))
-        self.assertEqual(self.dataHandling.phase_slices.shape, (13, 216, 216))
-        self.assertEqual(self.dataHandling.active_data.shape, (13, 216, 216))
-        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.phase_slices, 'active_data not equal '
-                                                                                              'to phase_slices.')
+        self.assertEqual(self.dataHandling.original_data.shape, (13, 2, 216, 216))
+        self.assertEqual(self.dataHandling.magn_data.shape, (13, 2, 216, 216))
+        self.assertEqual(self.dataHandling.phase_data.shape, (13, 2, 216, 216))
+        self.assertEqual(self.dataHandling.active_data.shape, (13, 2, 216, 216))
+        npt.assert_array_equal(self.dataHandling.active_data, self.dataHandling.phase_data, 'active_data not equal '
+                                                                                              'to phase_data.')
 
 
 if __name__ == '__main__':
