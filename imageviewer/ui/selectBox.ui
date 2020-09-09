@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>610</width>
+    <width>923</width>
     <height>416</height>
    </rect>
   </property>
@@ -33,7 +33,7 @@
        <bool>false</bool>
       </property>
       <property name="columnCount">
-       <number>4</number>
+       <number>6</number>
       </property>
       <attribute name="headerCascadingSectionResizes">
        <bool>false</bool>
@@ -54,6 +54,11 @@
       </column>
       <column>
        <property name="text">
+        <string>Protocol name</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
         <string notr="true">Slices</string>
        </property>
       </column>
@@ -65,6 +70,11 @@
       <column>
        <property name="text">
         <string notr="true">Size</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Image comments</string>
        </property>
       </column>
      </widget>

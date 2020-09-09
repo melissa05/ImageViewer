@@ -23,6 +23,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :ivar filename: Either the h5 file the user selected, or a list of the names of the first files of all dicom
             dataset within a dicom directory.
         :vartype filename: :class:`h5py._hl.files.File`, or list[str]
+        :ivar filetype: Indicates which filetype was loaded; either 'h5' or 'dicom'.
+        :vartype filetype: str
         :ivar directory: Whole path of the dicom directory the user selected (including trailing slash '/').
         :vartype directory: str
         :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory,
@@ -51,6 +53,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         # Setup attributes:
         self.filename = ''
+        self.filetype = ''
         self.directory = ''
         self.dicom_sets = []
         self.slice = 0
@@ -231,6 +234,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
         if filename:
+            self.filetype = 'h5'
             self.filename = h5py.File(filename, 'r')
             self.open_file_h5()
 
@@ -265,15 +269,20 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
                 item = QtWidgets.QTreeWidgetItem(self.select_box.treeWidget)
                 item.setText(0, name)
-                item.setText(1, sl)
-                item.setText(2, dy)
-                item.setText(3, si)
+                item.setText(2, sl)
+                item.setText(3, dy)
+                item.setText(4, si)
+                for key in self.filename[name].attrs:
+                    if key.lower() in ['protocol', 'protocol_name', 'protocolname']:
+                        item.setText(1, str(self.filename[name].attrs[key]))
+                    if key.lower() in ['comment', 'comments', 'image_comment', 'image_comments', 'imagecomment',
+                                       'imagecomments']:
+                        item.setText(5, str(self.filename[name].attrs[key]))
                 items.append(item)
             self.select_box.treeWidget.addTopLevelItems(items)
             # When user chooses dataset in the select_box, read_data() is called.
             self.select_box.show()
         else:
-            self.set_patientdata_labels_h5()
             # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
             # QThreadPool.start():
             get_file_content_thread = GetFileContentH5(self.filename, self.filename)
@@ -298,6 +307,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(caption="Pick a folder")
         if directory:
+            self.filetype = 'dicom'
             self.directory = directory + '/'
             # Getting all dcm filenames directly in folder:
             filenames = [f for f in os.listdir(directory)
@@ -316,7 +326,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 self.filename = filenames
                 self.dicom_sets = [self.filename]
                 self.select_box.selected = self.filename[0]
-                self.set_patientdata_labels_dicom()
                 # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
                 # QThreadPool.start():
                 get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
@@ -347,16 +356,20 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.select_box.treeWidget.clear()
             items = []
             for i, name in enumerate(self.filename):
+                ref = pydicom.read_file(self.directory + name)
+                protocol = str(ref.ProtocolName)
                 sl = str(len(self.dicom_sets[i]))
                 dy = str(1)  # Hardcoded, I do not know what dicoms with multiple dynamics look like.
-                ref = pydicom.read_file(self.directory + name)
                 si = f'{ref.Rows}x{ref.Columns}'
+                comment = str(ref.ImageComments)
 
                 item = QtWidgets.QTreeWidgetItem(self.select_box.treeWidget)
                 item.setText(0, name)
-                item.setText(1, sl)
-                item.setText(2, dy)
-                item.setText(3, si)
+                item.setText(1, protocol)
+                item.setText(2, sl)
+                item.setText(3, dy)
+                item.setText(4, si)
+                item.setText(5, comment)
                 items.append(item)
             self.select_box.treeWidget.addTopLevelItems(items)
             # When user chooses dataset in the select_box, read_data() is called.
@@ -366,7 +379,6 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # Set self.select_box.selected manually to the only filename in the self.filename list because
             # set_patientdata_labels_dicom() and GetFileContentDicom() will use it:
             self.select_box.selected = self.filename[0]
-            self.set_patientdata_labels_dicom()
             # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
             # QThreadPool.start():
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
@@ -386,45 +398,57 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         the GUI labels' texts regarding patient data.
         """
         self.select_box.confirm()
-        if isinstance(self.filename, h5py._hl.files.File):
+        if self.filetype == 'h5':
             # .h5 file shall be read.
-            self.set_patientdata_labels_h5()
             get_file_content_thread = GetFileContentH5(self.filename, self.select_box.selected)
-            self.action_metadata.setEnabled(False)
             self.directory = ''
             self.dicom_sets = []
-        elif isinstance(self.filename, list) and '.dcm' in self.filename[0].lower():
+        elif self.filetype == 'dicom':
             # .dcm file shall be read.
-            self.set_patientdata_labels_dicom()
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
-            self.action_metadata.setEnabled(True)
 
         get_file_content_thread.signals.add_data.connect(self.add_data)
         get_file_content_thread.signals.finished.connect(self.after_data_added)
         self.threadpool.start(get_file_content_thread)
         self.threadpool.waitForDone()  # Waits for all threads to exit and removes all threads from the thread pool
 
-    def set_patientdata_labels_h5(self):
+    def set_patientdata_labels(self):
         """
-        Sets the text values of the labels regarding patient data back to default values since .h5 does not contain
-        metadata.
+        Sets the text values of the labels regarding patient data to metadata of read file, if metadata given.
         """
+        # Initialize at default, in case not all data is given:
         self.label_name_value.setText('-')
         self.label_age_value.setText('-')
         self.label_sex_value.setText('-')
         self.label_date_value.setText('----/--/--')
 
-    def set_patientdata_labels_dicom(self):
-        """
-        Sets the text values of the labels regarding patient data to the metadata of the dicom file.
-        """
-        metadata = pydicom.filereader.dcmread(self.directory + self.select_box.selected)
-        self.label_name_value.setText(str(metadata.PatientName))
-        self.label_age_value.setText(metadata.PatientAge)
-        self.label_sex_value.setText(metadata.PatientSex)
-        d = metadata.AcquisitionDate
-        date = d[:4] + '/' + d[4:6] + '/' + d[6:]
-        self.label_date_value.setText(date)
+        # Case of h5:
+        if self.filetype == 'h5':
+            for key in self.filename[self.select_box.selected].attrs:
+                if key.lower() in ['name', 'patient_name', 'patientname']:
+                    self.label_name_value.setText(str(self.filename[self.select_box.selected].attrs[key]))
+                if key.lower() in ['age', 'patient_age', 'patientage']:
+                    self.label_age_value.setText(str(self.filename[self.select_box.selected].attrs[key]))
+                if key.lower() in ['sex', 'patient_sex', 'patientsex']:
+                    self.label_sex_value.setText(str(self.filename[self.select_box.selected].attrs[key]))
+                if key.lower() in ['date', 'acquisition_date', 'acquisitiondate']:
+                    d = str(self.filename[self.select_box.selected].attrs[key])
+                    date = d[:4] + '/' + d[4:6] + '/' + d[6:]
+                    self.label_date_value.setText(date)
+
+        # Case of dicom:
+        elif self.filetype == 'dicom':
+            metadata = pydicom.filereader.dcmread(self.directory + self.select_box.selected)
+            if hasattr(metadata, 'PatientName'):
+                self.label_name_value.setText(str(metadata.PatientName))
+            if hasattr(metadata, 'PatientAge'):
+                self.label_age_value.setText(metadata.PatientAge)
+            if hasattr(metadata, 'PatientSex'):
+                self.label_sex_value.setText(metadata.PatientSex)
+            if hasattr(metadata, 'AcquisitionDate'):
+                d = metadata.AcquisitionDate
+                date = d[:4] + '/' + d[4:6] + '/' + d[6:]
+                self.label_date_value.setText(date)
 
     @pyqtSlot(object)
     def add_data(self, data):
@@ -488,6 +512,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         # Set statistics value labels back to default (in case other file was loaded before):
         self.reset_statistics()
+
+        # Metadata:
+        self.set_patientdata_labels()
+        self.action_metadata.setEnabled(True)
 
         # Finally, plot the data:
         self.mplWidget.create_plot()
@@ -601,8 +629,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Calls :meth:`.MetadataWindow.open`.
         """
-        if self.dicom_sets:
-            self.metadata_window.open(self.directory + self.select_box.selected)
+        if self.filetype == 'h5':
+            self.metadata_window.open(self.filename[self.select_box.selected], self.filetype)
+        elif self.filetype == 'dicom':
+            self.metadata_window.open(self.directory + self.select_box.selected, self.filetype)
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
@@ -620,9 +650,11 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         super().__init__()
         self.setupUi(self)
 
-        self.treeWidget.setColumnWidth(0, 350)
-        self.treeWidget.setColumnWidth(1, 50)
-        self.treeWidget.setColumnWidth(2, 50)
+        self.treeWidget.setColumnWidth(0, 300)  # Filename
+        self.treeWidget.setColumnWidth(1, 250)  # Protocol name
+        self.treeWidget.setColumnWidth(2, 50)  # Slices
+        self.treeWidget.setColumnWidth(3, 50)  # Dynamics
+        self.treeWidget.setColumnWidth(4, 70)  # Size
 
         self.buttonCancel.clicked.connect(self.cancel)
 
@@ -678,23 +710,31 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
         self.treeWidget.clear()
         self.hide()
 
-    def open(self, file):
+    def open(self, file, filetype):
         """
         Populates :attr:`treeWidget` with the metadata of the given file and shows the window.
 
         :param file: Full filename including path of the dicom file to read metadata from.
         :type file: str
+        :param filetype: Indicates type of file; either 'h5' or 'dicom'.
+        :vartype filetype: str
         """
         self.treeWidget.clear()
         items = []
-        metadata = pydicom.filereader.dcmread(file)
-        for elem in metadata.iterall():
-            item = QtWidgets.QTreeWidgetItem(self.treeWidget)
-            item.setText(0, str(elem.tag))
-            item.setText(1, str(elem.name))
-            item.setText(2, str(elem.VR))
-            item.setText(3, str(elem.value))
-            items.append(item)
+        if filetype == 'h5':
+            for key in file.attrs:
+                item = QtWidgets.QTreeWidgetItem(self.treeWidget)
+                item.setText(1, key)
+                item.setText(3, str(file.attrs[key]))
+        elif filetype == 'dicom':
+            metadata = pydicom.filereader.dcmread(file)
+            for elem in metadata.iterall():
+                item = QtWidgets.QTreeWidgetItem(self.treeWidget)
+                item.setText(0, str(elem.tag))
+                item.setText(1, str(elem.name))
+                item.setText(2, str(elem.VR))
+                item.setText(3, str(elem.value))
+                items.append(item)
         self.treeWidget.addTopLevelItems(items)
         self.show()
 

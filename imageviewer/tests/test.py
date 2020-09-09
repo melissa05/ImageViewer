@@ -134,13 +134,13 @@ class TestFileLoad(unittest.TestCase):
         Tests :meth:`~imageviewer.main.ImageViewer.open_file_dcm` in the case of a single dicom fileset containing
         multiple files.
 
-        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.set_patientdata_labels_dicom`,
-        :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.set_slice_label`,
-        these methods are also being tested along the way. Normally, the function would start the thread of
-        :class:`~imageviewer.fileHandling.GetFileContentDicom`, so the
-        :meth:`~imageviewer.main.fileHandling.GetFileContentDicom.run` method of it is also called and tested.
+        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.add_data`,
+        and :meth:`~imageviewer.main.ImageViewer.after_data_added`, these methods are also being tested along the
+        way. Normally, the function would start the thread of :class:`~imageviewer.fileHandling.GetFileContentDicom`,
+        so the :meth:`~imageviewer.main.fileHandling.GetFileContentDicom.run` method of it is also called and tested.
         """
         # Setting prerequisites:
+        self.viewer.filetype = 'dicom'
         self.viewer.directory = 'data/dicom_single/'
         self.viewer.dicom_sets = [[f for f in os.listdir(self.viewer.directory)
                                    if os.path.isfile(os.path.join(self.viewer.directory, f)) and '.dcm' in f.lower()]]
@@ -150,10 +150,6 @@ class TestFileLoad(unittest.TestCase):
 
         # Assertions:
         self.assertEqual(self.viewer.filename, ['VFA_learni001701990001000100010001.DCM'])
-        self.assertEqual(self.viewer.label_name_value.text(), 'VFA_learning_test3')
-        self.assertEqual(self.viewer.label_age_value.text(), '029Y')
-        self.assertEqual(self.viewer.label_sex_value.text(), 'O')
-        self.assertEqual(self.viewer.label_date_value.text(), '2019/08/14')
 
         # Calling GetFileContentDicom.run() and ImageViewer functions (would be called when thread emits signals):
         get_file_content_dicom = GetFileContentDicom(self.viewer.dicom_sets,
@@ -177,6 +173,10 @@ class TestFileLoad(unittest.TestCase):
         self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
         self.assertEqual(self.viewer.label_slice_max.text(), '/32')
         self.assertEqual(self.viewer.label_dynamic_max.text(), '/1')
+        self.assertEqual(self.viewer.label_name_value.text(), 'VFA_learning_test3')
+        self.assertEqual(self.viewer.label_age_value.text(), '029Y')
+        self.assertEqual(self.viewer.label_sex_value.text(), 'O')
+        self.assertEqual(self.viewer.label_date_value.text(), '2019/08/14')
 
     def test_open_h5(self):
         """
@@ -184,12 +184,12 @@ class TestFileLoad(unittest.TestCase):
         one selected has one slice.
 
         Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.read_data`,
-        :meth:`~imageviewer.main.ImageViewer.set_patientdata_labels_h5`,
-        :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.set_slice_label`,
+        :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.after_data_added`,
         these methods are also being tested along the way.
         """
         # Setting prerequisites:
         self.viewer.filename = h5py.File('data/test_data.h5', 'r')
+        self.viewer.filetype = 'h5'
 
         # Calling function under test:
         self.viewer.open_file_h5()
@@ -213,11 +213,6 @@ class TestFileLoad(unittest.TestCase):
                                                                   'despite .h5 file being loaded.')
         self.assertEqual(self.viewer.directory, '', 'No directory should be set because .h5 file is loaded.')
         self.assertEqual(self.viewer.dicom_sets, [], 'Dicom sets should be empty because .h5 file is loaded.')
-        # Assertions regarding set_patientdata_labels_h5:
-        self.assertEqual(self.viewer.label_name_value.text(), '-')
-        self.assertEqual(self.viewer.label_age_value.text(), '-')
-        self.assertEqual(self.viewer.label_sex_value.text(), '-')
-        self.assertEqual(self.viewer.label_date_value.text(), '----/--/--')
 
         # Calling functions which would be called when thread emits signals:
         self.viewer.add_data(self.viewer.filename[self.viewer.select_box.selected][()])
@@ -229,6 +224,11 @@ class TestFileLoad(unittest.TestCase):
         self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
         self.assertEqual(self.viewer.label_slice_max.text(), '/1')
         self.assertEqual(self.viewer.label_dynamic_max.text(), '/1')
+        # Assertions regarding set_patientdata_labels_h5:
+        self.assertEqual(self.viewer.label_name_value.text(), '-')
+        self.assertEqual(self.viewer.label_age_value.text(), '-')
+        self.assertEqual(self.viewer.label_sex_value.text(), '-')
+        self.assertEqual(self.viewer.label_date_value.text(), '----/--/--')
 
 
 class TestMetadataWindow(unittest.TestCase):
@@ -243,7 +243,7 @@ class TestMetadataWindow(unittest.TestCase):
         Tests :meth:`~imageviewer.main.MetadataWindow.open`.
         """
         # Calling function under test:
-        self.mw.open('data/dicom_single/VFA_learni001701990001000100010001.dcm')
+        self.mw.open('data/dicom_single/VFA_learni001701990001000100010001.dcm', 'dicom')
         # Assertions:
         self.assertEqual(self.mw.treeWidget.topLevelItemCount(), 160)
 
