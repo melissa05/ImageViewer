@@ -4,6 +4,8 @@ from PyQt5.QtGui import QIcon, QPixmap, QColor
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT
 from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.figure import Figure
+from matplotlib.colorbar import Colorbar
+from matplotlib import cm, colors
 from matplotlib.widgets import RectangleSelector, EllipseSelector
 
 
@@ -336,13 +338,13 @@ class MplWidget(QWidget):
     """
     def __init__(self, parent=None):
         """
-        :ivar canvas: The actual matplotlib figure canvas where data is plotted.
+        :ivar canvas: The actual matplotlib figure canvas where data and colormap are plotted.
         :vartype canvas: :class:`matplotlib.backends.backend_qt5agg.FigureCanvasQTAgg`
         :ivar toolbar: Toolbar which holds actions.
         :vartype toolbar: :class:`NavigationToolbar`
         :ivar empty: Indicates if canvas is empty.
         :vartype empty: bool
-        :ivar cmap: Name of the colormap (matplotlib) used to plot the data.
+        :ivar cmap: Name of the colormap (matplotlib) used to plot the data. Defaults to 'plasma'.
         :vartype cmap: str
         :ivar im: The image which gets displayed.
         :vartype im: :class:`matplotlib.image.AxesImage`
@@ -361,8 +363,13 @@ class MplWidget(QWidget):
         self.canvas = FigureCanvas(Figure())
         self.canvas.mousePressEvent = self.canvasMousePressEvent
         self.canvas.mouseMoveEvent = self.canvasMouseMoveEvent
+        # For plot:
         self.canvas.axes = self.canvas.figure.add_subplot(111)
         self.canvas.axes.axis('off')
+        # For colorbar:
+        self.canvas.axesc = self.canvas.figure.add_axes([0.85, 0.115, 0.02, 0.765])  # For colorbar (x, y, width, height)
+        self.canvas.axesc.axis('off')
+        self.colorbar = None
         self.toolbar = NavigationToolbar(self.canvas, self)
         self.empty = True
         self.cmap = 'plasma'
@@ -411,16 +418,17 @@ class MplWidget(QWidget):
 
     def mouseMoveEvent(self, event):
         """
-        Handles mouse moving while middle button (wheel) is being pressed. Adjusts color range limits if movement
-        direction is vertical (upwards narrows the range, downwards widens it). Horizontal movement changes the
-        middle of the color range (right movement sets it higher, left movement lower). :meth:`change_cmin` and
-        :meth:`change_cmax` are triggered because of this.
+        Handles mouse moving while middle button (wheel) is being pressed.
+
+        Adjusts color range limits if movement direction is vertical (upwards narrows the range, downwards widens
+        it). Horizontal movement moves the whole window of the color range (right movement sets it higher,
+        left movement lower). :meth:`change_cmin` and :meth:`change_cmax` are triggered because of this.
 
         :param event: Instance of a PyQt input event.
         :type event: :class:`QMouseEvent`
         """
         # Adjusting color limits of plot via mouse movements while midbutton (mousewheel) is pressed:
-        if event.buttons() == Qt.MidButton:
+        if event.buttons() == Qt.MidButton and not self.empty:
             scale = 4  # The lower, the more sensitive to movement.
             step = self.imageViewer.doubleSpinBox_colorscale_min.singleStep()
 
@@ -472,8 +480,8 @@ class MplWidget(QWidget):
         """
         Used to create a plot and set attributes for a dataset.
 
-        Clears :attr:`canvas.axes`, creates (new) image to show and draws it on :attr:`canvas`. It is intended to use
-        this method when a new dataset or file is loaded.
+        Clears :attr:`canvas.axes`, creates (new) image to show and draws it on :attr:`canvas`. A matching colorbar
+        is created on :attr:`canvas.axesc`. It is intended to use this method when a new dataset or file is loaded.
 
         :meth:`canvas.axes.format_coord` gets overwritten, so that data coordinates are shown in integer numbers. The
         selection mode is also taken care of here (in case the button is pressed or there was a selector present
@@ -494,6 +502,13 @@ class MplWidget(QWidget):
                                            self.imageViewer.slice, self.imageViewer.dynamic, :, :],
                                            cmap=self.cmap, clim=(self.color_min, self.color_max))
         self.canvas.axes.axis('off')
+
+        # Colorbar:
+        self.colorbar = Colorbar(ax=self.canvas.axesc, mappable=self.im, cmap=cm.get_cmap(self.cmap),
+                                 norm=colors.Normalize(vmin=self.color_min, vmax=self.color_max),
+                                 orientation='vertical')
+        self.canvas.axesc.axis('on')
+        self.colorbar.solids.set_edgecolor("face")
 
         def format_coord(x, y):
             """
@@ -639,49 +654,53 @@ class MplWidget(QWidget):
 
             self.update_plot()
 
-    @pyqtSlot()
-    def change_cmap(self):
+    def change_cmap(self, cmap):
         """
-        Sets :attr:`cmap` to selected colormap (str), changes colormap of the actual image and calls
+        Sets attribute :attr:`cmap` to parameter :paramref:`cmap`, changes colormap of the actual image and calls
         :meth:`update_plot`.
 
         Is called when user changes the colormap in the main window (:class:`.ImageViewer`).
+
+        :param cmap: Name of new colormap.
+        :type cmap: str
         """
-        self.cmap = self.imageViewer.menuColormap.sender().text().lower()
+        self.cmap = cmap
         if not self.empty:
             self.im.set_cmap(self.cmap)
             self.update_plot()
 
-    @pyqtSlot()
-    def change_cmin(self):
+    def change_cmin(self, cmin):
         """
-        Changes :paramref:`color_min` and :paramref:`color_min` according to the user's input in the
-        :class:`ImageViewer` GUI and updates the image shown.
+        Changes :attr:`color_min` according to :paramref:`cmin` and updates the image shown.
+
+        :param cmin: New colormap minimum value.
+        :type cmin: float
         """
-        if self.imageViewer.doubleSpinBox_colorscale_min.value() <= self.color_max:
+        if cmin <= self.color_max:
             # Change allowed, follow through with updating stuff:
-            self.color_min = self.imageViewer.doubleSpinBox_colorscale_min.value()
+            self.color_min = cmin
         else:
             # Change forbidden (minimum cannot be higher than maximum value). Set min=max-:
-            self.color_min = self.imageViewer.doubleSpinBox_colorscale_max.value()
+            self.color_min = self.color_max
             self.imageViewer.doubleSpinBox_colorscale_min.setValue(self.color_min)
         # Update plot:
         if not self.empty:
             self.im.set_clim([self.color_min, self.color_max])
             self.canvas.draw()
 
-    @pyqtSlot()
-    def change_cmax(self):
+    def change_cmax(self, cmax):
         """
-        Changes :paramref:`color_max` and :paramref:`color_max` according to the user's input in the
-        :class:`ImageViewer` GUI and updates the image shown.
+        Changes :attr:`color_max` according to :paramref:`cmax` and updates the image shown.
+
+        :param cmax: New colormap maximum value.
+        :type cmax: float
         """
-        if self.imageViewer.doubleSpinBox_colorscale_max.value() >= self.color_min:
+        if cmax >= self.color_min:
             # Change allowed, follow through with updating stuff:
-            self.color_max = self.imageViewer.doubleSpinBox_colorscale_max.value()
+            self.color_max = cmax
         else:
             # Change forbidden (minimum cannot be higher than maximum value). Set max=min:
-            self.color_max = self.imageViewer.doubleSpinBox_colorscale_min.value()
+            self.color_max = self.color_min
             self.imageViewer.doubleSpinBox_colorscale_max.setValue(self.color_max)
         # Update plot:
         if not self.empty:

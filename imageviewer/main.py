@@ -70,9 +70,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.spinBox_slice.valueChanged.connect(self.slice_value_changed)
         self.spinBox_dynamic.valueChanged.connect(self.dynamic_value_changed)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
-        self.menuColormap.triggered.connect(self.mplWidget.change_cmap)
-        self.doubleSpinBox_colorscale_min.valueChanged.connect(self.mplWidget.change_cmin)
-        self.doubleSpinBox_colorscale_max.valueChanged.connect(self.mplWidget.change_cmax)
+        self.menuColormap.triggered.connect(self.change_cmap)
+        self.doubleSpinBox_colorscale_min.valueChanged.connect(self.change_cmin)
+        self.doubleSpinBox_colorscale_max.valueChanged.connect(self.change_cmax)
         self.pushButton_reset_colorscale.clicked.connect(self.reset_colorscale_limits)
 
         self.mplWidget.toolbar.signals.rectangularSelection.connect(self.statistics)
@@ -616,6 +616,27 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.label_std_value.setText('-')
         self.mean = None
         self.std = None
+
+    @pyqtSlot()
+    def change_cmap(self):
+        """
+        Calls :meth:`.MplWidget.change_cmap`.
+        """
+        self.mplWidget.change_cmap(self.menuColormap.sender().text().lower())
+
+    @pyqtSlot()
+    def change_cmin(self):
+        """
+        Calls :meth:`.MplWidget.change_cmin`.
+        """
+        self.mplWidget.change_cmin(self.doubleSpinBox_colorscale_min.value())
+
+    @pyqtSlot()
+    def change_cmax(self):
+        """
+        Calls :meth:`.MplWidget.change_cmax`.
+        """
+        self.mplWidget.change_cmax(self.doubleSpinBox_colorscale_max.value())
 
     def reset_colorscale_limits(self):
         """
