@@ -6,7 +6,6 @@ import numpy as np
 import numpy.testing as npt
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QApplication
-# from PyQt5.QtTest import QTest
 
 from imageviewer.main import ImageViewer, SelectBox, MetadataWindow, DataHandling
 from imageviewer.fileHandling import IdentifyDatasetsDicom, GetFileContentDicom
@@ -118,16 +117,22 @@ class TestFileLoad(unittest.TestCase):
 
         # Assertions:
         self.assertEqual(len(identify_datasets_dicom.file_sets), 8, 'Wrong number of filesets detected.')
-        self.assertEqual(len(identify_datasets_dicom.file_sets[0]), 32, 'Wrong number of files of fileset detected.')
-        self.assertEqual(len(identify_datasets_dicom.file_sets[1]), 28, 'Wrong number of files of fileset detected.')
-        self.assertEqual(len(identify_datasets_dicom.file_sets[2]), 32, 'Wrong number of files of fileset detected.')
-        self.assertEqual(len(identify_datasets_dicom.file_sets[7]), 22, 'Wrong number of files of fileset detected.')
+        self.assertEqual(identify_datasets_dicom.file_sets[0]['dynamics'], 1,
+                         'Wrong number of dynamics of fileset detected.')
+        self.assertEqual(identify_datasets_dicom.file_sets[0]['slices'], 32,
+                         'Wrong number of slices of fileset detected.')
+        self.assertEqual(identify_datasets_dicom.file_sets[1]['slices'], 28,
+                         'Wrong number of slices of fileset detected.')
+        self.assertEqual(identify_datasets_dicom.file_sets[2]['slices'], 32,
+                         'Wrong number of slices of fileset detected.')
+        self.assertEqual(identify_datasets_dicom.file_sets[7]['slices'], 22,
+                         'Wrong number of slices of fileset detected.')
         file_set_names = ['VFA_learni001701990001000100010001.DCM', 'VFA_learni002801990005000100010001.DCM',
                           'VFA_learni003901990001000100010001.DCM', 'VFA_learni005001990001000100010001.DCM',
                           'VFA_learni006101990001000100010001.DCM', 'VFA_learni007201990001000100010001.DCM',
                           'VFA_learni008301990001000100010001.DCM', 'VFA_learni009401990001000100010001.DCM']
-        self.assertEqual([f_set[0] for f_set in identify_datasets_dicom.file_sets], file_set_names, 'Wrong first file '
-                                                                                                    'of fileset.')
+        self.assertEqual([f_set['name'] for f_set in identify_datasets_dicom.file_sets], file_set_names,
+                         'Wrong first file of fileset.')
 
     def test_open_dicom(self):
         """
@@ -142,8 +147,7 @@ class TestFileLoad(unittest.TestCase):
         # Setting prerequisites:
         self.viewer.filetype = 'dicom'
         self.viewer.directory = 'data/dicom_single/'
-        self.viewer.dicom_sets = [[f for f in os.listdir(self.viewer.directory)
-                                   if os.path.isfile(os.path.join(self.viewer.directory, f)) and '.dcm' in f.lower()]]
+        self.viewer.dicom_sets = [{'name': 'VFA_learni001701990001000100010001.DCM', 'slices': 32, 'dynamics': 1}]
 
         # Calling function under test:
         self.viewer.open_file_dcm(self.viewer.dicom_sets)
@@ -160,12 +164,16 @@ class TestFileLoad(unittest.TestCase):
         self.viewer.after_data_added()
 
         # Getting the target data:
-        file_set = self.viewer.dicom_sets[0]
-        ref_data_dcm = pydicom.read_file(self.viewer.directory + file_set[0])
-        data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns), dtype=ref_data_dcm.pixel_array.dtype)
-        for filename in file_set:
-            slice_ = pydicom.read_file(self.viewer.directory + filename)
-            data[file_set.index(filename), :, :] = slice_.pixel_array
+        f_set = self.viewer.dicom_sets[0]
+        filenames = sorted([f for f in os.listdir(self.viewer.directory)
+                            if os.path.isfile(os.path.join(self.viewer.directory, f))
+                            and '.dcm' in f.lower()
+                            and f_set['name'][0:-24] in f])
+        ref_data_dcm = pydicom.read_file(self.viewer.directory + filenames[0])
+        data = np.zeros((f_set['slices'], f_set['dynamics'], ref_data_dcm.Rows, ref_data_dcm.Columns),
+                         dtype=ref_data_dcm.pixel_array.dtype)
+        for s_i in range(f_set['slices']):
+            data[s_i, 0, :, :] = pydicom.read_file(self.viewer.directory + filenames[s_i]).pixel_array
 
         # Assertions:
         npt.assert_array_equal(self.viewer.data_handling.original_data, data)

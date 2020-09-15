@@ -29,11 +29,15 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :vartype directory: str
         :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory,
             identified by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
-        :vartype dicom_sets: list[list[str]]
+        :vartype dicom_sets: list[dict]
+        :ivar dicom_ref: Filename (incl. path) of reference file of selected dicom set.
+        :vartype dicom_ref: str
         :ivar slice: The index of the slice of the image data being displayed.
         :vartype slice: int
         :ivar dynamic: The index of the dynamic of the image data being displayed.
         :vartype dynamic: int
+        :ivar dim5: The index of the 5th dimension of the image data being displayed.
+        :vartype dim5: int
         :ivar mean: The mean value of the data inside the current selector (roi) of
             :class:`~.mplwidget.NavigationToolbar`.
         :vartype mean: float
@@ -56,8 +60,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.filetype = ''
         self.directory = ''
         self.dicom_sets = []
+        self.dicom_ref = ''
         self.slice = 0
         self.dynamic = 0
+        self.dim5 = 0
         self.mean = None
         self.std = None
 
@@ -69,6 +75,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         self.spinBox_slice.valueChanged.connect(self.slice_value_changed)
         self.spinBox_dynamic.valueChanged.connect(self.dynamic_value_changed)
+        self.spinBox_dim5.valueChanged.connect(self.change_dim5)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
         self.menuColormap.triggered.connect(self.change_cmap)
         self.doubleSpinBox_colorscale_min.valueChanged.connect(self.change_cmin)
@@ -225,12 +232,30 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         self.spinBox_dynamic.setValue(self.dynamic+1)
 
+    def change_dim5(self):
+        """
+        Changes the current index of 5th dimension of data.
+
+        Checks if new index is out ouf range of data; if yes, sets spinbox back to last value; if no, accepts change
+        and updates plot.
+        """
+        if not self.data_handling.empty:
+            dim5_i = self.spinBox_dim5.value() - 1
+            if 0 <= dim5_i < self.data_handling.original_data.shape[2]:
+                self.dim5 = dim5_i
+                self.data_handling.change_active_data(self.dim5)
+                if not self.mplWidget.empty:
+                    self.update_plot()
+            else:
+                self.spinBox_dim5.setValue(self.dim5)
+
     @pyqtSlot()
     def browse_folder_h5(self):
         """
         Opens a file dialog for selecting an .h5 file.
 
-        Once a file is selected, it is stored in :attr:`~filename` and :meth:`open_file_h5` gets called.
+        Once a file is selected, it is stored in :attr:`filename`, :attr:`filetype` is set and :meth:`open_file_h5`
+        gets called.
         """
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
         if filename:
@@ -244,9 +269,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         Checks if there is more than one dataset within the file (:attr:`filename`) to open. If yes, opens instance
         of :class:`SelectBox` which lets user select a dataset and will call :meth:`read_data`; if no,
-        calls :meth:`set_patientdata_labels_h5` and creates instance of
-        :class:`~imageviewer.fileHandling.GetFileContentH5` which will run in a new thread to get the data within the
-        file.
+        creates instance of :class:`~imageviewer.fileHandling.GetFileContentH5` which will run in a new thread to get
+        the data within the file and call :meth:`add_data` and :meth:`after_data_added` when finished.
         """
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to choose a
@@ -296,14 +320,14 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Opens a file dialog for selecting a dicom folder.
 
-        Once a folder is selected, it is stored in :attr:`~directory`.
-        If there is more than one file present within this directory (which is usually the case), a new thread,
-        started by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`, will sort the files into datasets. Once
-        sorting is done, it will call :meth:`open_file_dcm`.
+        Once a folder is selected, it is stored in :attr:`directory` and :attr:`filetype` is set. If there is more
+        than one file present within this directory (which is usually the case), a new thread, started by
+        :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`, will identify the datasets. Once it is done,
+        it will call :meth:`open_file_dcm`.
 
         If there is only one dicom file present in the directory (very untypically), this file is loaded directly
         using :class:`~imageviewer.fileHandling.GetFileContentDicom` and also :meth:`set_patientdata_labels_dicom` is
-        called. Some attributes are also set directly, so the 'normal' file loading functions can be used.
+        called. Some attributes are also set directly, so other functions can be used either way.
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(caption="Pick a folder")
         if directory:
@@ -322,10 +346,11 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 # There is only one dicom file. Usually this should not be the case, as this is not how the dicom
                 # format is intended.
                 # Set some attributes here that usually would be set by other classes and functions, because
-                # set_patientdata_labels_dicom() and GetFileContentDicom() will use it:
+                # GetFileContentDicom() will use it:
                 self.filename = filenames
-                self.dicom_sets = [self.filename]
+                self.dicom_sets = [{'name': self.filename[0], 'slices': 1, 'dynamics': 1}]
                 self.select_box.selected = self.filename[0]
+                self.dicom_ref = self.directory + self.filename[0]
                 # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
                 # QThreadPool.start():
                 get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
@@ -339,32 +364,33 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         Handles opening of dicom datasets after folder was selected.
 
         Checks if there is more than one dataset within the :paramref:`file_sets`. If yes, opens instance of
-        :class:`SelectBox` which lets user select a dataset; if no, calls :meth:`set_patientdata_labels_dicom` and
-        directly loads the data of the only dataset using :class:`~imageviewer.fileHandling.GetFileContentDicom`.
+        :class:`SelectBox` which lets user select a dataset; if no,
+        directly loads the data of the only dataset using :class:`~imageviewer.fileHandling.GetFileContentDicom`, which
+        will call :meth:`add_data` and :meth:`data_added` when finished.
 
-        It sets :attr:`~dicom_sets` to :paramref:`file_sets` and :attr:`~filename` to a list of the names of the
-        first files of each fileset. These names will then stand for the set the file belongs to respectively.
+        It sets :attr:`dicom_sets` to :paramref:`file_sets` and :attr:`filename` to a list of dictionaries with the
+        names of the first files, the #slices, and the #dynamics of each fileset.
 
-        :param file_sets: A list that contains a list with the names of all files of a fileset for each fileset.
-        :type file_sets: list[list[str]]
+        :param file_sets: A list that contains a dictionary which holds filename, #slices, #dynamics for all filesets.
+        :type file_sets: list[dict]
         """
         self.dicom_sets = file_sets
-        self.filename = [f_set[0] for f_set in file_sets]
+        self.filename = [f_set['name'] for f_set in file_sets]
         if len(self.filename) > 1:
             # When there is more than one dataset: extra window (select_box) opens, which allows user to chose a
             # dataset:
             self.select_box.treeWidget.clear()
             items = []
-            for i, name in enumerate(self.filename):
-                ref = pydicom.read_file(self.directory + name)
-                protocol = str(ref.ProtocolName)
-                sl = str(len(self.dicom_sets[i]))
-                dy = str(1)  # Hardcoded, I do not know what dicoms with multiple dynamics look like.
-                si = f'{ref.Rows}x{ref.Columns}'
-                comment = str(ref.ImageComments)
+            for f_set in self.dicom_sets:
+                ref = pydicom.read_file(self.directory + f_set['name'])
+                protocol = str(ref.ProtocolName) if hasattr(ref, 'ProtocolName') else ''
+                sl = str(f_set['slices'])
+                dy = str(f_set['dynamics'])
+                si = f'{ref.Rows}x{ref.Columns}' if hasattr(ref, 'Rows') and hasattr(ref, 'Columns') else ''
+                comment = str(ref.ImageComments) if hasattr(ref, 'ImageComments') else ''
 
                 item = QtWidgets.QTreeWidgetItem(self.select_box.treeWidget)
-                item.setText(0, name)
+                item.setText(0, f_set['name'][0:-24])
                 item.setText(1, protocol)
                 item.setText(2, sl)
                 item.setText(3, dy)
@@ -377,8 +403,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         else:
             # There is only one dicom dataset (consisting of multiple files).
             # Set self.select_box.selected manually to the only filename in the self.filename list because
-            # set_patientdata_labels_dicom() and GetFileContentDicom() will use it:
+            # GetFileContentDicom() will use it:
             self.select_box.selected = self.filename[0]
+            self.dicom_ref = self.directory + self.filename[0]
             # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
             # QThreadPool.start():
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
@@ -392,10 +419,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Handles the reading of a dicom or h5 dataset which was selected.
 
-        Checks if the file selected via :class:`SelectBox` is of type h5 or dicom and starts the matching thread
-        (:class:`~fileHandling.GetFileContentH5` or :class:`~fileHandling.GetFileContentDicom`) to load the data and
-        calls the right method (:meth:`set_patientdata_labels_h5` or :meth:`set_patientdata_labels_dicom`) to set
-        the GUI labels' texts regarding patient data.
+        Depending on the :attr:`filetype`, the suiting thread (:class:`~fileHandling.GetFileContentH5` or
+        :class:`~fileHandling.GetFileContentDicom`) created to load the data. Methods :meth:`add_data` and
+        :meth:`after_data_added` are called.
         """
         self.select_box.confirm()
         if self.filetype == 'h5':
@@ -405,6 +431,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             self.dicom_sets = []
         elif self.filetype == 'dicom':
             # .dcm file shall be read.
+            self.dicom_ref = self.directory + next(fs['name'] for fs in self.dicom_sets
+                                                   if fs['name'][0:-24] == self.select_box.selected)
             get_file_content_thread = GetFileContentDicom(self.dicom_sets, self.select_box.selected, self.directory)
 
         get_file_content_thread.signals.add_data.connect(self.add_data)
@@ -438,7 +466,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         # Case of dicom:
         elif self.filetype == 'dicom':
-            metadata = pydicom.filereader.dcmread(self.directory + self.select_box.selected)
+            metadata = pydicom.filereader.dcmread(self.dicom_ref)
             if hasattr(metadata, 'PatientName'):
                 self.label_name_value.setText(str(metadata.PatientName))
             if hasattr(metadata, 'PatientAge'):
@@ -450,8 +478,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 date = d[:4] + '/' + d[4:6] + '/' + d[6:]
                 self.label_date_value.setText(date)
 
-    @pyqtSlot(object)
-    def add_data(self, data):
+    @pyqtSlot(object, int, int)
+    def add_data(self, data, slices=1, dynamics=1):
         """
         Hands the data over to :class:`DataHandling` to store it appropriately by calling it's method
         :meth:`~DataHandling.add_data`.
@@ -460,9 +488,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         :param data: Image data from file.
         :type data: numpy.ndarray
+        :param slices: Number of slices :paramref:`data` contains. Defaults to 1.
+        :type slices: int
+        :param dynamics: Number of dynamics :paramref:`data` contains. Defaults to 1.
+        :type dynamics: int
         """
         self.mplWidget.clear()
-        self.data_handling.add_data(data)
+        self.data_handling.add_data(data, slices, dynamics)
 
     @pyqtSlot()
     def after_data_added(self):
@@ -493,6 +525,14 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         # Check if current dynamic index is out of range:
         if self.dynamic >= self.data_handling.active_data.shape[1]:
             self.dynamic = self.data_handling.active_data.shape[1] - 1
+
+        # Dim 5:
+        if self.data_handling.original_data.ndim == 5:
+            self.label_dim5_max.setText(f'/{self.data_handling.original_data.shape[2]}')
+            self.spinBox_dim5.setEnabled(True)
+            self.spinBox_dim5.setMaximum(self.data_handling.original_data.shape[2])
+            self.spinBox_dim5.setMinimum(1)
+            self.spinBox_dim5.setValue(1)
 
         # Colorscale limits:
         diff = abs(self.data_handling.active_max-self.data_handling.active_min)
@@ -653,7 +693,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if self.filetype == 'h5':
             self.metadata_window.open(self.filename[self.select_box.selected], self.filetype)
         elif self.filetype == 'dicom':
-            self.metadata_window.open(self.directory + self.select_box.selected, self.filetype)
+            self.metadata_window.open(self.dicom_ref, self.filetype)
 
 
 class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
@@ -812,19 +852,29 @@ class DataHandling:
         self.active_min = None
         self.active_max = None
 
-    def add_data(self, data):
+    def add_data(self, data, slices=1, dynamics=1):
         """
         This function takes the data from a loaded file, processes it, and stores it in the right instance attributes.
 
-        The number of dimensions gets checked. If 2, the data contains only one slice and one dynamic and will be
-        expanded by two dimensions before being stored in order to handle it the same as 4-dimensional data. If 3,
-        it is assumed the data contains multiple slices but only one dynamic and will be expanded by one dimension
-        before it is further processed. If 4, which is the desired number of dimensions, its magnitude and phase get
-        stored in :attr:`magn_data` and :attr:`phase_data` directly. Depending on the value of :paramref:`magnitude`,
-        the magnitude or phase data gets stored in :attr:`active_data`.
+        The number of dimensions gets checked:
+        * If 2, the data contains only one slice and one dynamic and will be expanded by two dimensions before being
+          stored in order to handle it the same as 4-dimensional data.
+        * If 3, it is checked if the data contains multiple slices or multiple dynamics and will be expanded by one
+          dimension before it is further processed.
+        * If 4, which is the desired number of dimensions, its magnitude and phase get stored in :attr:`magn_data` and
+          :attr:`phase_data` directly.
+        * If there is a 5th dimension, the first index of that dimension is selected by default, so that
+          :attr:`active_data` holds only 4 dimensions, while attr:`original_data` holds all 5 dimensions.
+
+        Depending on the value of :paramref:`magnitude`, either the magnitude or phase data gets stored in
+        :attr:`active_data`.
 
         :param data: Image data loaded from file.
         :type data: numpy.ndarray
+        :param slices: Number of slices :paramref:`data` contains. Defaults to 1.
+        :type slices: int
+        :param dynamics: Number of dynamics :paramref:`data` contains. Defaults to 1.
+        :type dynamics: int
         """
         self.original_data = data
 
@@ -836,11 +886,19 @@ class DataHandling:
             self.phase_data = np.expand_dims(phase_values, axis=(0, 1))
 
         elif self.original_data.ndim == 3:
-            # Data contains multiple slices, but only one dynamic; we add an extra dimension:
+            # Data contains multiple slices or multiple dynamics; we add an extra dimension:
             magn_values = np.abs(self.original_data)
             phase_values = np.angle(self.original_data)
-            self.magn_data = np.expand_dims(magn_values, axis=1)
-            self.phase_data = np.expand_dims(phase_values, axis=1)
+            if slices > 1:
+                # Data contains multiple slices, but only one dynamic:
+                self.magn_data = np.expand_dims(magn_values, axis=1)
+                self.phase_data = np.expand_dims(phase_values, axis=1)
+            elif dynamics > 1:
+                # Data contains multiple dynamics, but only one slice:
+                self.magn_data = np.expand_dims(magn_values, axis=0)
+                self.phase_data = np.expand_dims(phase_values, axis=0)
+            else:
+                raise ValueError('Only one slice and one dynamic when data has 3 dimensions.')
 
         elif self.original_data.ndim == 4:
             # Data contains multiple slices and multiple dynamics, exactly as desired:
@@ -855,7 +913,7 @@ class DataHandling:
                 self.magn_data = np.abs(self.original_data[:, :, :, :])
                 self.phase_data = np.angle(self.original_data[:, :, :, :])
             else:
-                # Squeezing did not help, we remove middle dimension:
+                # Squeezing did not help, we just select 0 for now:
                 self.magn_data = np.abs(self.original_data[:, :, 0, :, :])
                 self.phase_data = np.angle(self.original_data[:, :, 0, :, :])
 
@@ -864,12 +922,20 @@ class DataHandling:
         self.active_max = self.active_data.max()
         self.empty = False
 
-    def change_active_data(self):
+    def change_active_data(self, dim5=None):
         """
+        Responsible for setting data which is used for plotting.
+
         Changes the value of :attr:`active_data` to either :attr:`magn_data` or :attr:`phase_data` depending on the
         value of attribute :attr:`magnitude`. Also changes :attr:`active_min` and :attr:`active_max` accordingly.
+
+        If :paramref:`dim5` is given, :attr:`magn_data` and :attr:`phase_data` are changed to absolute and phase
+        values of :attr:`original_data`[:, :, dim5, :, :] respectively first.
         """
         if not self.empty:
+            if dim5 is not None and dim5 < self.original_data.shape[2]:
+                self.magn_data = np.abs(self.original_data[:, :, dim5, :, :])
+                self.phase_data = np.angle(self.original_data[:, :, dim5, :, :])
             self.active_data = self.magn_data if self.magnitude else self.phase_data
             self.active_min = self.active_data.min()
             self.active_max = self.active_data.max()

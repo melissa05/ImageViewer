@@ -504,6 +504,7 @@ class MplWidget(QWidget):
         self.canvas.axes.axis('off')
 
         # Colorbar:
+        self.canvas.axesc.clear()
         self.colorbar = Colorbar(ax=self.canvas.axesc, mappable=self.im, cmap=cm.get_cmap(self.cmap),
                                  norm=colors.Normalize(vmin=self.color_min, vmax=self.color_max),
                                  orientation='vertical')
@@ -549,6 +550,7 @@ class MplWidget(QWidget):
         self.im.set_data(self.imageViewer.data_handling.active_data[
                          self.imageViewer.slice, self.imageViewer.dynamic, :, :])
         self.im.set_clim([self.color_min, self.color_max])
+        self.colorbar.update_normal(self.im)
         self.canvas.draw()
 
         # Emit rectangularSelection signal so the statistic labels get updated:

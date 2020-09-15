@@ -1,3 +1,4 @@
+import os
 import pydicom
 from PyQt5.QtCore import QRunnable, QObject, pyqtSignal
 import numpy as np
@@ -15,6 +16,7 @@ class GetFileContent(QRunnable):
         """
         super().__init__()
         self.selected = selected
+        self.data = None
         self.signals = GetFileContentSignals()
 
 
@@ -22,7 +24,7 @@ class GetFileContentSignals(QObject):
     """
     Class for generating thread signals for :class:`GetFileContent`.
     """
-    add_data = pyqtSignal(object)
+    add_data = pyqtSignal(object, int, int)
     finished = pyqtSignal()
 
 
@@ -43,12 +45,31 @@ class GetFileContentH5(GetFileContent):
 
     def run(self):
         """
-        Loads the selected dataset into an array and passes it to self.signals.add_data.emit(). Emits finished signal
-        after that.
+        Responsible for loading image data of .h5 file.
+
+        Loads the image data of a selected dataset into an array. Determines the number of slices and the number of
+        dynamics by simply looking at the number of dimensions and the shape of the data under the following
+        assumptions:
+
+        1. If the data has 3 dimensions, there are multiple slices, represented by the first dimension, and only one
+           dynamic.
+        2. If the data has more than 3 dimensions, the first dimension represents slices, the second dimension
+           represents dynamics.
+
+        The data array and the numbers of slices and dynamics are emitted with the :attr:`signals.add_data` signal.
+        The signal :attr:`signal.finished` is emitted afterwards.
 
         Gets called when the thread is started.
         """
-        self.signals.add_data.emit(self.filename[self.selected][()])  # old: self.filename[name].value
+        self.data = self.filename[self.selected][()]  # old: self.filename[name].value
+        sl = 1
+        dy = 1
+        if self.data.ndim == 3:
+            sl = self.data.shape[0]
+        elif self.data.ndim > 3:
+            sl = self.data.shape[0]
+            dy = self.data.shape[1]
+        self.signals.add_data.emit(self.data, sl, dy)
         self.signals.finished.emit()
 
 
@@ -59,8 +80,8 @@ class GetFileContentDicom(GetFileContent):
     def __init__(self, file_sets, selected, directory):
         """
         :param file_sets: Filesets identified by :class:`IdentifyDatasetsDicom`.
-        :type file_sets: list[list[str]]
-        :param selected: The name of the first file of the selected dataset within the directory.
+        :type file_sets: list[dict]
+        :param selected: The scan name and ID of the selected dataset within the directory.
         :type selected: str
         :param directory: The selected directory.
         :type directory: str
@@ -68,26 +89,33 @@ class GetFileContentDicom(GetFileContent):
         super().__init__(selected)
         self.file_sets = file_sets
         self.directory = directory
-        self.data = None
 
     def run(self):
         """
-        Loads the selected dataset into an array and passes it to self.signals.add_data.emit(). Emits finished signal
-        after that.
+        Responsible for loading image data of a dicom dataset.
+
+        Loads the image data of a selected dataset into an array. The data array and the numbers of slices and
+        dynamics are emitted with the :attr:`signals.add_data` signal. The signal :attr:`signal.finished` is emitted
+        afterwards.
 
         Gets called when the thread is started.
         """
-        for file_set in self.file_sets:
-            if file_set[0] == self.selected:
-                # First file within dataset is used for getting the numbers of rows and columns, and type of the data:
-                ref_data_dcm = pydicom.read_file(self.directory + file_set[0])
-                self.data = np.zeros((len(file_set), ref_data_dcm.Rows, ref_data_dcm.Columns),
-                                     dtype=ref_data_dcm.pixel_array.dtype)
-                for filename in file_set:
-                    slice_ = pydicom.read_file(self.directory + filename)
-                    self.data[file_set.index(filename), :, :] = slice_.pixel_array
+        if len(self.file_sets) > 1:
+            f_set = next(fs for fs in self.file_sets if fs['name'][0:-24] == self.selected)
+        else:
+            f_set = self.file_sets[0]
+        filenames = sorted([f for f in os.listdir(self.directory)
+                            if os.path.isfile(os.path.join(self.directory, f))
+                            and '.dcm' in f.lower()
+                            and f_set['name'][0:-24] in f])
+        ref_data_dcm = pydicom.read_file(self.directory + filenames[0])
+        self.data = np.zeros((f_set['slices'], f_set['dynamics'], ref_data_dcm.Rows, ref_data_dcm.Columns),
+                             dtype=ref_data_dcm.pixel_array.dtype)
+        for s_i in range(f_set['slices']):
+            for d_i in range(f_set['dynamics']):
+                self.data[s_i, d_i, :, :] = pydicom.read_file(self.directory + filenames[s_i+d_i]).pixel_array
 
-        self.signals.add_data.emit(self.data)
+        self.signals.add_data.emit(self.data, f_set['slices'], f_set['dynamics'])
         self.signals.finished.emit()
 
 
@@ -102,6 +130,9 @@ class IdentifyDatasetsDicom(QRunnable):
         """
         :param filenames: The names of all the files within the dicom directory.
         :type filenames: list[str]
+
+        :ivar filesets: Dictionaries for all identified filesets, which hold filename, #slices, #dynamics.
+        :vartype filesets: list[dict]
         """
         super().__init__()
         self.filenames = sorted(filenames)
@@ -110,32 +141,33 @@ class IdentifyDatasetsDicom(QRunnable):
 
     def run(self):
         """
-        This function looks at all filenames in parameter :paramref:`filenames` separately and sorts them into sets.
+        This function identifies the filesets formed by the files in parameter :paramref:`filenames`.
 
-        It does so by comparing a filename to the next filename: if the filenames differ at at least two characters and
-        the first and last different characters are more than 2 indices apart, they are considered to be of different
-        sets.
-        This works on the assumption that the filenames contain ongoing numbers, one representing dataset and one
-        representing file (slice) within dataset. Using 2 indices as the criteria, this approach may be a problem
-        when there are more than 1000 files within a set.
+        The full filename of the first file, the number of slices, and the number of dynamics are stored inside a
+        dictionary for each fileset, and all these dicts are stored in the list :attr:`file_sets`, which are then
+        passed on when the finish signal is emitted.
+
+        The following naming conventions for files are important for this function to work (assuming the file ending
+        '.dcm' is included):
+
+        1. The first to -25th characters, which usually contain the scan name and the scan ID, are identical for each
+           file belonging to the same set, and are unique among different sets.
+        2. Characters -20 to -17 contain the slice number.
+        3. Characters -8 to -5 contain the dynamic number.
 
         Gets called when the thread is started.
         """
-        f_set = [self.filenames[0]]
-        for i in range(len(self.filenames) - 1):
-            curr_f = self.filenames[i]
-            next_f = self.filenames[i + 1]
-            diff_indx = [j for j in range(len(curr_f)) if curr_f[j] != next_f[j]]
-            if abs(diff_indx[0] - diff_indx[-1]) > 2:
-                # Now we have new dataset, because the filename strings differ at multiple indices which are apart.
-                # (If there is only one index at which the filenames differ, this would be False.)
-                self.file_sets.append(f_set)
-                f_set = [next_f]
-            else:
-                f_set.append(next_f)
-                if i == len(self.filenames) - 2:
-                    # Loop is at last iteration, the current f_set is complete and the last set.
-                    self.file_sets.append(f_set)
+        set_names = sorted(set([f[0:-24] for f in self.filenames]))
+        for fsn in set_names:
+            ref_name = next(f for f in self.filenames if f[0:-24] == fsn)
+            slices = len(set([f[-20:-16] for f in self.filenames if f[0:-24] == fsn]))
+            dynamics = len(set([f[-8:-4] for f in self.filenames if f[0:-24] == fsn]))
+            f_set = {
+                'name': ref_name,
+                'slices': slices,
+                'dynamics': dynamics
+            }
+            self.file_sets.append(f_set)
 
         self.signals.setsIdentified.emit(self.file_sets)
 
