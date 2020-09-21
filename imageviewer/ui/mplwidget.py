@@ -13,9 +13,12 @@ class NavigationToolbar(NavigationToolbar2QT):
     """
     Custom matplotlib navigation toolbar used by :class:`MplWidget`.
 
-    The class variable :attr:`~toolitems` is overwritten so that some of matplotlibs default buttons and
-    functionalities are removed. The method *_update_buttons_checked()* is also overridden to include the self made
-    *rectselect* and *ellipseselect* actions.
+    Enables matplotlib's default functionalities *home*, *pan*, *zoom*, *savefigure*, and adds new functionalities,
+    which are selecting a region of interest (ROI), and rotating the plot by 90 degrees.
+
+    The class variable :attr:`toolitems` is overwritten so that some of matplotlibs default buttons and
+    functionalities are removed. The method :meth:`_update_buttons_checked` overwrites the parent method to include
+    the self made *rectselect* and *ellipseselect* actions.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -38,7 +41,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.rect_selector = None
         self.rectselect_startposition = None
         self.rectselect_endposition = None
-        self.actionRectSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/rectangle.png'),
+        self.actionRectSelect = QAction(icon=self.create_icon('imageviewer/ui/icons/rectangle.png'),
                                         text='Select rectangle for statistics')
         self.actionRectSelect.setCheckable(True)
         self.actionRectSelect.setObjectName("actionRectSelect")
@@ -53,7 +56,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.ellipse_selector = None
         self.ellipseselect_startposition = None
         self.ellipseselect_endposition = None
-        self.actionEllipseSelect = QAction(icon=self._create_icon('imageviewer/ui/icons/ellipse.png'),
+        self.actionEllipseSelect = QAction(icon=self.create_icon('imageviewer/ui/icons/ellipse.png'),
                                            text='Select ellipse for statistics')
         self.actionEllipseSelect.setCheckable(True)
         self.actionEllipseSelect.setObjectName("actionEllipseSelect")
@@ -66,14 +69,14 @@ class NavigationToolbar(NavigationToolbar2QT):
         self._actions['pan'].toggled.connect(self.deactivate_ellipse_selector)
 
         # Adding anti-clockwise rotation action:
-        self.actionRotateAntiClockwise = QAction(icon=self._create_icon('imageviewer/ui/icons/rotate_anticlock.png'),
+        self.actionRotateAntiClockwise = QAction(icon=self.create_icon('imageviewer/ui/icons/rotate_anticlock.png'),
                                                  text='Rotate plot anti-clockwise')
         self.actionRotateAntiClockwise.setObjectName("actionRotateAntiClockwise")
         self.actionRotateAntiClockwise.triggered.connect(self.rotate_anticlockwise)
         self.insertAction(self._actions['pan'], self.actionRotateAntiClockwise)
 
         # Adding anti-clockwise rotation action:
-        self.actionRotateClockwise = QAction(icon=self._create_icon('imageviewer/ui/icons/rotate_clock.png'),
+        self.actionRotateClockwise = QAction(icon=self.create_icon('imageviewer/ui/icons/rotate_clock.png'),
                                              text='Rotate plot clockwise')
         self.actionRotateClockwise.setObjectName("actionRotateClockwise")
         self.actionRotateClockwise.triggered.connect(self.rotate_clockwise)
@@ -81,6 +84,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         self.insertSeparator(self._actions['pan'])
 
     # Remove unwanted actions by leaving them out. (None, None, None, None) creates separator:
+    #: Overwritten parent attribute.
     toolitems = (('Home', 'Reset original view', 'home', 'home'),
                  (None, None, None, None),
                  ('Pan', 'Pan axes with left mouse, zoom with right', 'move', 'pan'),
@@ -90,8 +94,8 @@ class NavigationToolbar(NavigationToolbar2QT):
 
     def _update_buttons_checked(self):
         """
-        Syncs button checkstates to match active mode. Overrides parent function to include *rectselect* and
-        *ellipseselect*.
+        Syncs button checkstates to match active mode. Overwrites parent function to include *rectselect* and
+        *ellipseselect* modes.
         """
         if 'pan' in self._actions:
             self._actions['pan'].setChecked(self._active == 'PAN')
@@ -112,9 +116,29 @@ class NavigationToolbar(NavigationToolbar2QT):
 
         Overwrites parent function.
         """
-        self.mplwidget.create_plot()
+        if not self.mplwidget.empty:
+            self.mplwidget.create_plot()
+        if not self.mplwidget.imageViewer.data_handler.empty:
+            self.mplwidget.imageViewer.reset_colorscale_limits()  # Handles Spinboxes
         self.mplwidget.imageViewer.reset_statistics()
-        self.mplwidget.imageViewer.reset_colorscale_limits()  # Handles Spinboxes
+
+    def create_icon(self, name):
+        """
+        Creates a responsive icon with the style of default icons to be placed in the toolbar.
+
+        :param name: Name (including relative path) of image file to be used.
+        :type name: str
+        :return: Icon for the toolbar.
+        :rtype: :class:`PyQt5.QtGui.QIcon`
+        """
+        pm = QPixmap(name)
+        pm.setDevicePixelRatio(self.canvas._dpi_ratio)
+        color = self.palette().color(self.foregroundRole())
+        mask = pm.createMaskFromColor(QColor('black'), Qt.MaskOutColor)
+        pm.fill(color)
+        pm.setMask(mask)
+
+        return QIcon(pm)
 
     @pyqtSlot()
     def activate_rect_select(self):
@@ -166,8 +190,8 @@ class NavigationToolbar(NavigationToolbar2QT):
     @pyqtSlot()
     def deactivate_hide_rect_selector(self):
         """
-        Calls :meth:`deactivate_rect_selector` and hides the selector. Gets called when *ellipseselect* action is
-        toggled.
+        Calls :meth:`deactivate_rect_selector` and hides the selector (in the GUI). Gets called when *ellipseselect*
+        action is toggled.
         """
         self.deactivate_rect_selector()
         if self.rect_selector:
@@ -175,8 +199,7 @@ class NavigationToolbar(NavigationToolbar2QT):
 
     def create_rectangle_selector(self):
         """
-        This function simply enables rectangular selection by creating an instance of
-        :class:`matplotlib.widgets.RectangleSelector`.
+        Enables rectangular selection by creating an instance of :class:`matplotlib.widgets.RectangleSelector`.
         """
         self.rect_selector = RectangleSelector(self.canvas.axes, self.on_rect_select, drawtype='box',
                                                button=[1],  # only left mouse button
@@ -198,7 +221,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         if not self.mplwidget.empty:
             self.rectselect_startposition = (eclick.xdata, eclick.ydata)
             self.rectselect_endposition = (erelease.xdata, erelease.ydata)
-            self.signals.rectangularSelection.emit(self.rectselect_startposition, self.rectselect_endposition,
+            self.signals.roiSelection.emit(self.rectselect_startposition, self.rectselect_endposition,
                                                    'rectangle')
 
     @pyqtSlot()
@@ -251,8 +274,8 @@ class NavigationToolbar(NavigationToolbar2QT):
     @pyqtSlot()
     def deactivate_hide_ellipse_selector(self):
         """
-        Calls :meth:`deactivate_ellipse_selector` and hides the selector. Gets called when *rectselect* action is
-        toggled.
+        Calls :meth:`deactivate_ellipse_selector` and hides the selector (in the GUI). Gets called when *rectselect*
+        action is toggled.
         """
         self.deactivate_ellipse_selector()
         if self.ellipse_selector:
@@ -260,8 +283,7 @@ class NavigationToolbar(NavigationToolbar2QT):
 
     def create_ellipse_selector(self):
         """
-        This function simply enables ellipse selection by creating an instance of
-        :class:`matplotlib.widgets.EllipseSelector`.
+        Enables ellipse selection by creating an instance of :class:`matplotlib.widgets.EllipseSelector`.
         """
         self.ellipse_selector = EllipseSelector(self.canvas.axes, self.on_ellipse_select, drawtype='line',
                                                 button=[1],  # only left mouse button
@@ -283,64 +305,50 @@ class NavigationToolbar(NavigationToolbar2QT):
         if not self.mplwidget.empty:
             self.ellipseselect_startposition = (eclick.xdata, eclick.ydata)
             self.ellipseselect_endposition = (erelease.xdata, erelease.ydata)
-            self.signals.ellipseSelection.emit(self.ellipseselect_startposition, self.ellipseselect_endposition,
+            self.signals.roiSelection.emit(self.ellipseselect_startposition, self.ellipseselect_endposition,
                                                'ellipse')
 
     @pyqtSlot()
     def rotate_anticlockwise(self):
         """
-        Rotates plot anti-clockwise once by calling :meth:`.DataHandling.rotate_data` and
+        Rotates plot anti-clockwise once by calling :meth:`.DataHandler.rotate_data` and
         :meth:`MplWidget.update_plot`.
         """
         if not self.mplwidget.empty:
-            self.mplwidget.imageViewer.data_handling.rotate_data(k=1)
+            self.mplwidget.imageViewer.data_handler.rotate_data(k=1)
             self.mplwidget.update_plot()
 
     @pyqtSlot()
     def rotate_clockwise(self):
         """
-        Rotates plot clockwise once by calling :meth:`.DataHandling.rotate_data` and :meth:`MplWidget.update_plot`.
+        Rotates plot clockwise once by calling :meth:`.DataHandler.rotate_data` and :meth:`MplWidget.update_plot`.
         """
         if not self.mplwidget.empty:
-            self.mplwidget.imageViewer.data_handling.rotate_data(k=3)
+            self.mplwidget.imageViewer.data_handler.rotate_data(k=3)
             self.mplwidget.update_plot()
-
-    def _create_icon(self, name):
-        """
-        Creates a responsive icon with the style of default icons to be placed in the toolbar.
-
-        :param name: Name (including relative path) of image file to be used.
-        :type name: str
-        :return: Icon for the toolbar.
-        :rtype: :class:`PyQt5.QtGui.QIcon`
-        """
-        pm = QPixmap(name)
-        pm.setDevicePixelRatio(self.canvas._dpi_ratio)
-        color = self.palette().color(self.foregroundRole())
-        mask = pm.createMaskFromColor(QColor('black'), Qt.MaskOutColor)
-        pm.fill(color)
-        pm.setMask(mask)
-
-        return QIcon(pm)
 
 
 class NavigationToolbarSignals(QObject):
     """
     Class for generating thread signals for the :class:`NavigationToolbar` class.
     """
-    rectangularSelection = pyqtSignal(tuple, tuple, str)
-    ellipseSelection = pyqtSignal(tuple, tuple, str)
+    #: Signal to emit with startposition (tuple), endposition (tuple), selector (str) after ROI was drawn.
+    roiSelection = pyqtSignal(tuple, tuple, str)
 
 
 class MplWidget(QWidget):
     """
-    Self-made widget used to visualize image data.
+    Widget used to visualize image data.
+
+    A widget which holds a matplotlib canvas and a toolbar (:class:`NavigationToolbar`) as attributes. Colormap and
+    color limits can be changed, the plot can be zoomed and panned. Most of the actions however can be found in the
+    toolbar.
     """
     def __init__(self, parent=None):
         """
         :ivar canvas: The actual matplotlib figure canvas where data and colormap are plotted.
         :vartype canvas: :class:`matplotlib.backends.backend_qt5agg.FigureCanvasQTAgg`
-        :ivar toolbar: Toolbar which holds actions.
+        :ivar toolbar: Toolbar with actions.
         :vartype toolbar: :class:`NavigationToolbar`
         :ivar empty: Indicates if canvas is empty.
         :vartype empty: bool
@@ -348,11 +356,9 @@ class MplWidget(QWidget):
         :vartype cmap: str
         :ivar im: The image which gets displayed.
         :vartype im: :class:`matplotlib.image.AxesImage`
-        :ivar color_min: Minimum limit for color scale for the currently loaded data. Will be used for
-            :paramref:`clim` parameter of :attr:`im`.
+        :ivar color_min: Minimum limit for color scale for the currently loaded data.
         :vartype color_min: float
-        :ivar color_max: Maximum limit for color scale for the currently loaded data. Will be used for
-            :paramref:`clim` parameter of :attr:`im`.
+        :ivar color_max: Maximum limit for color scale for the currently loaded data.
         :vartype color_max: float
         :ivar imageViewer: Instance of the main window the widget is part of. Allows access to data and variables. It
             is set in :class:`~imageviewer.main.ImageViewer`'s __init__().
@@ -388,8 +394,9 @@ class MplWidget(QWidget):
         """
         Handles events caused by pressing mouse buttons.
 
-        Sets focus on main window (:class:`.ImageViewer`) if left mouse button was pressed. Saves current cursor
-        position when middle button (wheel) was pressed.
+        Sets focus on main window (:class:`.ImageViewer`) if left mouse button was pressed.
+
+        Saves current cursor position when middle button (wheel) was pressed.
 
         :param event: Instance of a PyQt input event.
         :type event: :class:`QMouseEvent`
@@ -402,9 +409,9 @@ class MplWidget(QWidget):
 
     def canvasMousePressEvent(self, event):
         """
-        Used to overwrite the default :meth:`FigureCanvasQT.mousePressEvent` method of :attr:`canvas`.
+        Used to overwrite the default :meth:`FigureCanvasQT.mousePressEvent` method of attribute :attr:`canvas`.
 
-        Does what original method does and then calls own :meth:`.mousePressEvent` method.
+        Does what original method does and then calls own :meth:`mousePressEvent` method.
 
         :param event: Instance of a PyQt input event.
         :type event: :class:`QMouseEvent`
@@ -420,9 +427,9 @@ class MplWidget(QWidget):
         """
         Handles mouse moving while middle button (wheel) is being pressed.
 
-        Adjusts color range limits if movement direction is vertical (upwards narrows the range, downwards widens
-        it). Horizontal movement moves the whole window of the color range (right movement sets it higher,
-        left movement lower). :meth:`change_cmin` and :meth:`change_cmax` are triggered because of this.
+        Adjusts color range limits if movement direction is mainly vertical (upwards narrows the range, downwards
+        widens it). Mainly horizontal movement moves the whole window of the color range (right movement sets it
+        higher, left movement lower). :meth:`change_cmin` and :meth:`change_cmax` are triggered.
 
         :param event: Instance of a PyQt input event.
         :type event: :class:`QMouseEvent`
@@ -453,9 +460,9 @@ class MplWidget(QWidget):
 
     def canvasMouseMoveEvent(self, event):
         """
-        Used to overwrite the default :meth:`FigureCanvasQT.mouseMoveEvent` method of :attr:`canvas`.
+        Used to overwrite the default :meth:`FigureCanvasQT.mouseMoveEvent` method of attribute :attr:`canvas`.
 
-        Does what original method does and then calls own :meth:`.mouseMoveEvent` method.
+        Does what original method does and then calls own :meth:`mouseMoveEvent` method.
 
         :param event: Instance of a PyQt input event.
         :type event: :class:`QMouseEvent`
@@ -478,27 +485,27 @@ class MplWidget(QWidget):
 
     def create_plot(self):
         """
-        Used to create a plot and set attributes for a dataset.
+        Used to create a plot on attribute :attr:`canvas` and set attributes for a dataset.
 
-        Clears :attr:`canvas.axes`, creates (new) image to show and draws it on :attr:`canvas`. A matching colorbar
+        Clears :attr:`canvas.axes` and draws a new image on it. A matching colorbar
         is created on :attr:`canvas.axesc`. It is intended to use this method when a new dataset or file is loaded.
 
         :meth:`canvas.axes.format_coord` gets overwritten, so that data coordinates are shown in integer numbers. The
-        selection mode is also taken care of here (in case the button is pressed or there was a selector present
-        used on the old image).
+        selection mode (*rectselect* or *ellipseselect*) is also taken care of here (in case the button is pressed or
+        there was a selector present used on the old image).
 
         See also: :meth:`update_plot`.
         """
         # Clearing Axes, setting title:
-        self.color_min = self.imageViewer.data_handling.active_min
-        self.color_max = self.imageViewer.data_handling.active_max
+        self.color_min = self.imageViewer.data_handler.active_min
+        self.color_max = self.imageViewer.data_handler.active_max
 
         self.canvas.axes.clear()
         self.canvas.axes.margins(0, 0)  # exact fit
         self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
 
         # Creating image:
-        self.im = self.canvas.axes.matshow(self.imageViewer.data_handling.active_data[
+        self.im = self.canvas.axes.matshow(self.imageViewer.data_handler.active_data[
                                            self.imageViewer.slice, self.imageViewer.dynamic, :, :],
                                            cmap=self.cmap, clim=(self.color_min, self.color_max))
         self.canvas.axes.axis('off')
@@ -539,7 +546,7 @@ class MplWidget(QWidget):
 
     def update_plot(self):
         """
-        Changes image data to currently active data and updates the plot.
+        Changes image data to currently active data and updates the plot and the colorbar.
 
         The toolbar functions and settings remain as they are. It is intended to use this method when another image
         of the same dataset needs to be visualized (e.g. after colormap was changed or another slice was selected).
@@ -547,34 +554,36 @@ class MplWidget(QWidget):
         See also: :meth:`create_plot`.
         """
         self.canvas.axes.set_title(self.imageViewer.comboBox_magn_phase.currentText())
-        self.im.set_data(self.imageViewer.data_handling.active_data[
+        self.im.set_data(self.imageViewer.data_handler.active_data[
                          self.imageViewer.slice, self.imageViewer.dynamic, :, :])
         self.im.set_clim([self.color_min, self.color_max])
         self.colorbar.update_normal(self.im)
         self.canvas.draw()
 
-        # Emit rectangularSelection signal so the statistic labels get updated:
+        # Emit roiSelection signal so the statistic labels get updated:
         if self.toolbar.rect_selector and self.toolbar.rectselect_startposition:
-            self.toolbar.signals.rectangularSelection.emit(self.toolbar.rectselect_startposition,
-                                                           self.toolbar.rectselect_endposition,
+            self.toolbar.signals.roiSelection.emit(self.toolbar.rectselect_startposition,
+                                                   self.toolbar.rectselect_endposition,
                                                            'rectangle')
 
-        # Emit ellipseSelection signal so the statistic labels get updated:
+        # Emit roiSelection signal so the statistic labels get updated:
         if self.toolbar.ellipse_selector and self.toolbar.ellipseselect_startposition:
-            self.toolbar.signals.ellipseSelection.emit(self.toolbar.ellipseselect_startposition,
-                                                       self.toolbar.ellipseselect_endposition,
+            self.toolbar.signals.roiSelection.emit(self.toolbar.ellipseselect_startposition,
+                                                   self.toolbar.ellipseselect_endposition,
                                                        'ellipse')
 
     def zoom_plot(self, direction):
         """
         Zooms in or out of the plot.
 
+        Calls :meth:`update_plot`.
+
         :param direction: Indicates whether to zoom in or out. Valid values are 'in' and 'out'.
         :type direction: str
         """
         if not self.empty:
-            max_x = self.imageViewer.data_handling.active_data.shape[-2]
-            max_y = self.imageViewer.data_handling.active_data.shape[-1]
+            max_x = self.imageViewer.data_handler.active_data.shape[-2]
+            max_y = self.imageViewer.data_handler.active_data.shape[-1]
             cur_xlim = self.canvas.axes.get_xlim()
             cur_ylim = self.canvas.axes.get_ylim()
             cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
@@ -605,49 +614,57 @@ class MplWidget(QWidget):
 
     def pan_plot(self, direction):
         """
-        Pans plot in 4 main directions.
+        Allows panning plot in 4 main directions.
+
+        The distance (in pixels) by which the plot is panned depends on the current x and y limits of the plot,
+        so that the plot is panned less after zooming in, and more after zooming out. Calls :meth:`update_plot`.
 
         :param direction: Indicates direction to move plot to. Valid values are 'left', 'right', 'up', and 'down'.
         :type direction: str
         """
         if not self.empty:
-            max_x = self.imageViewer.data_handling.active_data.shape[-2] - 0.5
-            max_y = self.imageViewer.data_handling.active_data.shape[-1] - 0.5
+            max_x = self.imageViewer.data_handler.active_data.shape[-2] - 0.5
+            max_y = self.imageViewer.data_handler.active_data.shape[-1] - 0.5
             cur_xlim = self.canvas.axes.get_xlim()
             cur_ylim = self.canvas.axes.get_ylim()
             cur_xrange = (cur_xlim[1] - cur_xlim[0])/2
             cur_yrange = (cur_ylim[0] - cur_ylim[1])/2
 
-            distance = int(max(cur_xrange, cur_yrange)*0.2)
-            if distance < 1:
+            # Set distances to 20% of the range, or 1:
+            distance_x = int(cur_xrange*0.2)
+            if distance_x < 1:
                 # Case when zoomed in very far -> no movement would happen.
-                distance = 1
+                distance_x = 1
+            distance_y = int(cur_yrange*0.2)
+            if distance_y < 1:
+                # Case when zoomed in very far -> no movement would happen.
+                distance_y = 1
 
             if direction == 'left':
-                if cur_xlim[1] + distance < max_x:
-                    self.canvas.axes.set_xlim((cur_xlim[0] + distance,
-                                               cur_xlim[1] + distance))
+                if cur_xlim[1] + distance_x < max_x:
+                    self.canvas.axes.set_xlim((cur_xlim[0] + distance_x,
+                                               cur_xlim[1] + distance_x))
                 else:
                     self.canvas.axes.set_xlim((cur_xlim[0] + (max_x-cur_xlim[1]),
                                                max_x))
             elif direction == 'right':
-                if cur_xlim[0] - distance > -0.5:
-                    self.canvas.axes.set_xlim((cur_xlim[0] - distance,
-                                               cur_xlim[1] - distance))
+                if cur_xlim[0] - distance_x > -0.5:
+                    self.canvas.axes.set_xlim((cur_xlim[0] - distance_x,
+                                               cur_xlim[1] - distance_x))
                 else:
                     self.canvas.axes.set_xlim((-0.5,
                                                cur_xlim[1] - (cur_xlim[0]+0.5)))
             elif direction == 'up':
-                if cur_ylim[0] + distance < max_y:
-                    self.canvas.axes.set_ylim((cur_ylim[0] + distance,
-                                               cur_ylim[1] + distance))
+                if cur_ylim[0] + distance_y < max_y:
+                    self.canvas.axes.set_ylim((cur_ylim[0] + distance_y,
+                                               cur_ylim[1] + distance_y))
                 else:
                     self.canvas.axes.set_ylim((max_y,
                                                cur_ylim[1] + (max_y-cur_ylim[0])))
             elif direction == 'down':
-                if cur_ylim[1] - distance > -0.5:
-                    self.canvas.axes.set_ylim((cur_ylim[0] - distance,
-                                               cur_ylim[1] - distance))
+                if cur_ylim[1] - distance_y > -0.5:
+                    self.canvas.axes.set_ylim((cur_ylim[0] - distance_y,
+                                               cur_ylim[1] - distance_y))
                 else:
                     self.canvas.axes.set_ylim((cur_ylim[0] - (cur_ylim[1]+0.5),
                                                -0.5))
@@ -658,6 +675,8 @@ class MplWidget(QWidget):
 
     def change_cmap(self, cmap):
         """
+        Handles changing the colormap.
+
         Sets attribute :attr:`cmap` to parameter :paramref:`cmap`, changes colormap of the actual image and calls
         :meth:`update_plot`.
 
@@ -673,7 +692,11 @@ class MplWidget(QWidget):
 
     def change_cmin(self, cmin):
         """
-        Changes :attr:`color_min` according to :paramref:`cmin` and updates the image shown.
+        Handles changing the minimum color limit of the plot.
+
+        Changes attribute :attr:`color_min` to parameter :paramref:`cmin` and updates the image shown, given that
+        minimum would not be higher than maximum. In the other case attributes :attr:`cmin` and :attr:`cmax` would be
+        set to the same value.
 
         :param cmin: New colormap minimum value.
         :type cmin: float
@@ -692,7 +715,11 @@ class MplWidget(QWidget):
 
     def change_cmax(self, cmax):
         """
-        Changes :attr:`color_max` according to :paramref:`cmax` and updates the image shown.
+        Handles changing the maximum color limit of the plot.
+
+        Changes attribute :attr:`color_max` to parameter :paramref:`cmax` and updates the image shown, given that
+        minimum would not be higher than maximum. In the other case attributes :attr:`cmin` and :attr:`cmax` would be
+        set to the same value.
 
         :param cmax: New colormap maximum value.
         :type cmax: float

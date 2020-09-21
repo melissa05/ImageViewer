@@ -15,8 +15,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     """
     Main class for showing the UI. Runs in the main thread.
 
-    Lets user open h5 and dicom files of which image data will be displayed using matplotlib, change the colormap,
-    and select if magnitude or phase shall be displayed.
+    Lets user open h5 and dicom files of which image data will be displayed and metadata can be shown.
     """
     def __init__(self):
         """
@@ -27,8 +26,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :vartype filetype: str
         :ivar directory: Whole path of the dicom directory the user selected (including trailing slash '/').
         :vartype directory: str
-        :ivar dicom_sets: List of lists with all files belonging to the same dataset within the dicom directory,
-            identified by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
+        :ivar dicom_sets: One dictionary (with keys *name*, *slices*, *dynamics*) for each dataset within the dicom
+            directory identified by :class:`~imageviewer.fileHandling.IdentifyDatasetsDicom`.
         :vartype dicom_sets: list[dict]
         :ivar dicom_ref: Filename (incl. path) of reference file of selected dicom set.
         :vartype dicom_ref: str
@@ -36,20 +35,22 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :vartype slice: int
         :ivar dynamic: The index of the dynamic of the image data being displayed.
         :vartype dynamic: int
-        :ivar dim5: The index of the 5th dimension of the image data being displayed.
-        :vartype dim5: int
+        :ivar dim3: The index of the 3rd dimension of the image data being displayed.
+        :vartype dim3: int
         :ivar mean: The mean value of the data inside the current selector (roi) of
             :class:`~.mplwidget.NavigationToolbar`.
         :vartype mean: float
         :ivar std: The standard deviation of the data inside the current selector (roi) of
             :class:`~.mplwidget.NavigationToolbar`.
         :vartype std: float
+        :ivar data_handler: Image data is being processed and stored here.
+        :vartype data_handler: :class:`DataHandler`
+        :ivar metadata_window: Window to show metadata of loaded file.
+        :vartype metadata_window: :class:`MetadataWindow`
+        :ivar mplWidget: Widget used to visualize image data.
+        :vartype mplWidget: :class:`~imageviewer.ui.mplwidget.MplWidget`
         :ivar select_box: Window which lets user select a dataset within a selected file/directory.
         :vartype select_box: :class:`SelectBox`
-        :ivar data_handling: Data is being processed and stored here.
-        :vartype data_handling: :class:`DataHandling`
-        :ivar mplWidget: A self-made widget (inherits from QWidget) which is used to visualize image data.
-        :vartype mplWidget: :class:`~imageviewer.ui.mplwidget.MplWidget`
         """
         super().__init__()
         self.setupUi(self)
@@ -63,7 +64,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.dicom_ref = ''
         self.slice = 0
         self.dynamic = 0
-        self.dim5 = 0
+        self.dim3 = 0
         self.mean = None
         self.std = None
 
@@ -75,15 +76,14 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
         self.spinBox_slice.valueChanged.connect(self.slice_value_changed)
         self.spinBox_dynamic.valueChanged.connect(self.dynamic_value_changed)
-        self.spinBox_dim5.valueChanged.connect(self.change_dim5)
+        self.spinBox_dim3.valueChanged.connect(self.dim3_value_changed)
         self.comboBox_magn_phase.currentIndexChanged.connect(self.change_magn_phase)
         self.menuColormap.triggered.connect(self.change_cmap)
         self.doubleSpinBox_colorscale_min.valueChanged.connect(self.change_cmin)
         self.doubleSpinBox_colorscale_max.valueChanged.connect(self.change_cmax)
         self.pushButton_reset_colorscale.clicked.connect(self.reset_colorscale_limits)
 
-        self.mplWidget.toolbar.signals.rectangularSelection.connect(self.statistics)
-        self.mplWidget.toolbar.signals.ellipseSelection.connect(self.statistics)
+        self.mplWidget.toolbar.signals.roiSelection.connect(self.statistics)
 
         # Generate Selection UI:
         # When .h5 or dicom folder contains more than one set of data, this box lets user select dataset.
@@ -94,7 +94,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         self.metadata_window = MetadataWindow()
 
         # Object for storing and handling data:
-        self.data_handling = DataHandling()
+        self.data_handler = DataHandler()
 
         # Generate worker threads (ThreadPool):
         self.threadpool = QThreadPool()
@@ -103,10 +103,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def wheelEvent(self, event):
         """
-        This function enables going through the data slices and dynamics using the mouse wheel.
+        Enables going through the data slices and dynamics using the mouse wheel.
 
-        A 120° turn in the y direction is turned into a slice difference of 1 and :meth`change_slice` is called.
-        A 120° turn in the x direction is turned into a dynamic difference of -1 and :meth`change_dynamic` is called.
+        A 120° turn in the y direction is turned into a slice difference of 1 and :meth:`change_slice` is called.
+        A 120° turn in the x direction is turned into a dynamic difference of -1 and :meth:`change_dynamic` is called.
 
         :param event: The wheel event which contains parameters that describe a wheel event.
         :type event: :class:`QWheelEvent`
@@ -122,7 +122,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Handles key press inputs.
 
-        :param event: Instance of a PyQt input event.
+        :param event: PyQt key input event.
         :type event: :class:`QKeyEvent`
         """
         # Dynamic selection / panning plot (with ctrl) via left and right keys:
@@ -158,11 +158,20 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     def mousePressEvent(self, event):
         """
         Sets focus on self.
+
+        :param event: PyQt mouse input event.
+        :type event: :class:`QMouseEvent`
         """
         if event.buttons() == Qt.LeftButton:
             self.setFocus()
 
     def closeEvent(self, event):
+        """
+        Calls :meth:`close`.
+
+        :param event: PyQt close event.
+        :type event: :class:`QCloseEvent`:
+        """
         self.close()
 
     def close(self):
@@ -184,18 +193,19 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Changes the current slice of data (if not out of range for the current dataset).
 
+        Calls :meth:`set_slice_spinbox` and :meth:`update_plot`.
+
         :param d: The difference between new and old slice number.
         :type d: int
         """
-        if not self.data_handling.empty:
+        if not self.data_handler.empty:
             slice_i = self.slice + d
-            if 0 <= slice_i and slice_i < self.data_handling.active_data.shape[0]:
+            if 0 <= slice_i < self.data_handler.active_data.shape[0]:
                 self.slice = slice_i
                 self.set_slice_spinbox()
                 if not self.mplWidget.empty:
                     self.update_plot()
 
-    @pyqtSlot()
     def set_slice_spinbox(self):
         """
         Sets the spin box for current slice (:attr:`spinBox_slice`) to according value.
@@ -205,7 +215,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     @pyqtSlot()
     def dynamic_value_changed(self):
         """
-        Gets called when value inside the dynamic spin box was changed. Calls :meth:`change_slice`.
+        Gets called when value inside the dynamic spin box was changed. Calls :meth:`change_dynamic`.
         """
         d = self.spinBox_dynamic.value()-1 - self.dynamic
         self.change_dynamic(d)
@@ -214,40 +224,48 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Changes the current dynamic of data (if not out of range for the current dataset).
 
+        Calls :meth:`set_dynamic_spinbox` and :meth:`update_plot`.
+
         :param d: The difference between new and old dynamic number.
         :type d: int
         """
-        if not self.data_handling.empty:
+        if not self.data_handler.empty:
             dynamic_i = self.dynamic + d
-            if 0 <= dynamic_i and dynamic_i < self.data_handling.active_data.shape[1]:
+            if 0 <= dynamic_i < self.data_handler.active_data.shape[1]:
                 self.dynamic = dynamic_i
                 self.set_dynamic_spinbox()
                 if not self.mplWidget.empty:
                     self.update_plot()
 
-    @pyqtSlot()
     def set_dynamic_spinbox(self):
         """
         Sets the spin box for current dynamic (:attr:`spinBox_dynamic`) to according value.
         """
         self.spinBox_dynamic.setValue(self.dynamic+1)
 
-    def change_dim5(self):
+    def dim3_value_changed(self):
         """
-        Changes the current index of 5th dimension of data.
+        Gets called when value inside the dim3 spin box was changed. Calls :meth:`change_dim3`.
+        """
+        d = self.spinBox_dim3.value() - 1 - self.dim3
+        self.change_dim3(d)
 
-        Checks if new index is out ouf range of data; if yes, sets spinbox back to last value; if no, accepts change
-        and updates plot.
+    def change_dim3(self, d):
         """
-        if not self.data_handling.empty:
-            dim5_i = self.spinBox_dim5.value() - 1
-            if 0 <= dim5_i < self.data_handling.original_data.shape[2]:
-                self.dim5 = dim5_i
-                self.data_handling.change_active_data(self.dim5)
+        Changes the current index of 5th dimension of data (if not out of range for the current dataset).
+
+        Calls :meth:`DataHandler.change_active_data` and :meth:`update_plot`.
+
+        :param d: The difference between new and old dim3 number.
+        :type d: int
+        """
+        if not self.data_handler.empty:
+            dim5_i = self.dim3 + d
+            if 0 <= dim5_i < self.data_handler.original_data.shape[2]:
+                self.dim3 = dim5_i
+                self.data_handler.change_active_data(self.dim3)
                 if not self.mplWidget.empty:
                     self.update_plot()
-            else:
-                self.spinBox_dim5.setValue(self.dim5)
 
     @pyqtSlot()
     def browse_folder_h5(self):
@@ -257,7 +275,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         Once a file is selected, it is stored in :attr:`filename`, :attr:`filetype` is set and :meth:`open_file_h5`
         gets called.
         """
-        filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick a .h5-file", filter="*.h5")
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Pick an .h5-file", filter="*.h5")
         if filename:
             self.filetype = 'h5'
             self.filename = h5py.File(filename, 'r')
@@ -265,10 +283,10 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def open_file_h5(self):
         """
-        Handles opening of h5 datasets after file was selected.
+        Handles opening/selecting of h5 dataset after file was selected.
 
-        Checks if there is more than one dataset within the file (:attr:`filename`) to open. If yes, opens instance
-        of :class:`SelectBox` which lets user select a dataset and will call :meth:`read_data`; if no,
+        Checks if there is more than one dataset within the file (attribute :attr:`filename`) to open. If yes,
+        opens instance of :class:`SelectBox` which lets user select a dataset and will call :meth:`read_data`; if no,
         creates instance of :class:`~imageviewer.fileHandling.GetFileContentH5` which will run in a new thread to get
         the data within the file and call :meth:`add_data` and :meth:`after_data_added` when finished.
         """
@@ -326,8 +344,9 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         it will call :meth:`open_file_dcm`.
 
         If there is only one dicom file present in the directory (very untypically), this file is loaded directly
-        using :class:`~imageviewer.fileHandling.GetFileContentDicom` and also :meth:`set_patientdata_labels_dicom` is
-        called. Some attributes are also set directly, so other functions can be used either way.
+        using :class:`~imageviewer.fileHandling.GetFileContentDicom` which will run in a new thread to get the data
+        within the file and call :meth:`add_data` and :meth:`after_data_added` when finished. Some attributes are
+        also set directly, so other functions can be used either way.
         """
         directory = QtWidgets.QFileDialog.getExistingDirectory(caption="Pick a folder")
         if directory:
@@ -349,7 +368,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 # GetFileContentDicom() will use it:
                 self.filename = filenames
                 self.dicom_sets = [{'name': self.filename[0], 'slices': 1, 'dynamics': 1}]
-                self.select_box.selected = self.filename[0]
+                self.select_box.selected = self.filename[0][0:-24]
                 self.dicom_ref = self.directory + self.filename[0]
                 # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
                 # QThreadPool.start():
@@ -363,15 +382,15 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Handles opening of dicom datasets after folder was selected.
 
-        Checks if there is more than one dataset within the :paramref:`file_sets`. If yes, opens instance of
-        :class:`SelectBox` which lets user select a dataset; if no,
-        directly loads the data of the only dataset using :class:`~imageviewer.fileHandling.GetFileContentDicom`, which
-        will call :meth:`add_data` and :meth:`data_added` when finished.
+        Checks if there is more than one dataset within :paramref:`file_sets`. If yes, opens instance of
+        :class:`SelectBox` which lets user select a dataset; if no, directly loads the data of the only dataset using
+        :class:`~imageviewer.fileHandling.GetFileContentDicom`, which will call :meth:`add_data` and
+        :meth:`after_data_added` when finished.
 
-        It sets :attr:`dicom_sets` to :paramref:`file_sets` and :attr:`filename` to a list of dictionaries with the
-        names of the first files, the #slices, and the #dynamics of each fileset.
+        It sets attribute :attr:`dicom_sets` to :paramref:`file_sets` and attribute :attr:`filename` to a list of
+        dictionaries with the names of the first files, the #slices, and the #dynamics for each fileset.
 
-        :param file_sets: A list that contains a dictionary which holds filename, #slices, #dynamics for all filesets.
+        :param file_sets: A list that contains a dictionary which holds filename, #slices, #dynamics for each fileset.
         :type file_sets: list[dict]
         """
         self.dicom_sets = file_sets
@@ -404,7 +423,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             # There is only one dicom dataset (consisting of multiple files).
             # Set self.select_box.selected manually to the only filename in the self.filename list because
             # GetFileContentDicom() will use it:
-            self.select_box.selected = self.filename[0]
+            self.select_box.selected = self.filename[0][0:-24]
             self.dicom_ref = self.directory + self.filename[0]
             # New Thread is started by creating an instance of GetFileContentH5/QRunnable and passing it to
             # QThreadPool.start():
@@ -419,8 +438,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Handles the reading of a dicom or h5 dataset which was selected.
 
-        Depending on the :attr:`filetype`, the suiting thread (:class:`~fileHandling.GetFileContentH5` or
-        :class:`~fileHandling.GetFileContentDicom`) created to load the data. Methods :meth:`add_data` and
+        Depending on attribute :attr:`filetype`, the suiting thread (:class:`.GetFileContentH5` or
+        :class:`.GetFileContentDicom`) is created to load the data. Methods :meth:`add_data` and
         :meth:`after_data_added` are called.
         """
         self.select_box.confirm()
@@ -481,8 +500,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
     @pyqtSlot(object, int, int)
     def add_data(self, data, slices=1, dynamics=1):
         """
-        Hands the data over to :class:`DataHandling` to store it appropriately by calling it's method
-        :meth:`~DataHandling.add_data`.
+        Hands the data over to :class:`DataHandler` to store it appropriately by calling it's method
+        :meth:`~DataHandler.add_data`.
 
         Before that, :meth:`~imageviewer.ui.mplwidget.MplWidget.clear` is called.
 
@@ -494,48 +513,48 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         :type dynamics: int
         """
         self.mplWidget.clear()
-        self.data_handling.add_data(data, slices, dynamics)
+        self.data_handler.add_data(data, slices, dynamics)
 
     @pyqtSlot()
     def after_data_added(self):
         """
         Takes care of enabling input fields and setting labels, before calling
-        :meth:`imageviewer.ui.MplWidget.create_plot`.
+        :meth:`.MplWidget.create_plot`.
 
-        Gets called after data was loaded from a file and added using :meth:`~.DataHandling.add_data`.
+        Gets called after data was loaded from a file and added using :meth:`~.DataHandler.add_data`.
         """
         # Slice:
-        self.label_slice_max.setText(f'/{self.data_handling.active_data.shape[0]}')
+        self.label_slice_max.setText(f'/{self.data_handler.active_data.shape[0]}')
         self.spinBox_slice.setEnabled(True)
-        self.spinBox_slice.setMaximum(self.data_handling.active_data.shape[0])
+        self.spinBox_slice.setMaximum(self.data_handler.active_data.shape[0])
         self.spinBox_slice.setMinimum(1)
         if self.spinBox_slice.value() == 0:
             self.spinBox_slice.setValue(1)
         # Check if current slice index is out of range:
-        if self.slice >= self.data_handling.active_data.shape[0]:
-            self.slice = self.data_handling.active_data.shape[0] - 1
+        if self.slice >= self.data_handler.active_data.shape[0]:
+            self.slice = self.data_handler.active_data.shape[0] - 1
 
         # Dynamic:
-        self.label_dynamic_max.setText(f'/{self.data_handling.active_data.shape[1]}')
+        self.label_dynamic_max.setText(f'/{self.data_handler.active_data.shape[1]}')
         self.spinBox_dynamic.setEnabled(True)
-        self.spinBox_dynamic.setMaximum(self.data_handling.active_data.shape[1])
+        self.spinBox_dynamic.setMaximum(self.data_handler.active_data.shape[1])
         self.spinBox_dynamic.setMinimum(1)
         if self.spinBox_dynamic.value() == 0:
             self.spinBox_dynamic.setValue(1)
         # Check if current dynamic index is out of range:
-        if self.dynamic >= self.data_handling.active_data.shape[1]:
-            self.dynamic = self.data_handling.active_data.shape[1] - 1
+        if self.dynamic >= self.data_handler.active_data.shape[1]:
+            self.dynamic = self.data_handler.active_data.shape[1] - 1
 
         # Dim 5:
-        if self.data_handling.original_data.ndim == 5:
-            self.label_dim5_max.setText(f'/{self.data_handling.original_data.shape[2]}')
-            self.spinBox_dim5.setEnabled(True)
-            self.spinBox_dim5.setMaximum(self.data_handling.original_data.shape[2])
-            self.spinBox_dim5.setMinimum(1)
-            self.spinBox_dim5.setValue(1)
+        if self.data_handler.original_data.ndim == 5:
+            self.label_dim3_max.setText(f'/{self.data_handler.original_data.shape[2]}')
+            self.spinBox_dim3.setEnabled(True)
+            self.spinBox_dim3.setMaximum(self.data_handler.original_data.shape[2])
+            self.spinBox_dim3.setMinimum(1)
+            self.spinBox_dim3.setValue(1)
 
         # Colorscale limits:
-        diff = abs(self.data_handling.active_max-self.data_handling.active_min)
+        diff = abs(self.data_handler.active_max - self.data_handler.active_min)
         if diff > 10**(-10):
             magnitude = np.log10(diff/100)
             magnitude = 10**int(magnitude) if magnitude > 0 else 10**round(magnitude)
@@ -543,8 +562,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             magnitude = 10**(-9)  # Should not really matter, as limits cannot be changed when min=max.
         self.doubleSpinBox_colorscale_min.setSingleStep(magnitude)
         self.doubleSpinBox_colorscale_max.setSingleStep(magnitude)
-        self.mplWidget.color_min = self.data_handling.active_min
-        self.mplWidget.color_max = self.data_handling.active_max
+        self.mplWidget.color_min = self.data_handler.active_min
+        self.mplWidget.color_max = self.data_handler.active_max
         self.doubleSpinBox_colorscale_min.setValue(self.mplWidget.color_min)
         self.doubleSpinBox_colorscale_max.setValue(self.mplWidget.color_max)
         self.doubleSpinBox_colorscale_min.setEnabled(True)
@@ -565,22 +584,22 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Handles changing from magnitude to phase display and vice versa.
 
-        Is called when user changes the value of the comboBox in the GUI regarding magnitude and phase. Sets
-        :attr:`~DataHandling.magnitude` to True when user selected Magnitude, sets it to False when user selected Phase.
-        Calls :meth:`DataHandling.change_active_data` and :meth:`update_plot` afterwards. The colorscale limits (and
-        spin boxes) get adjusted too.
+        Is called when user changes the value of the comboBox in the GUI regarding magnitude and phase. Sets attribute
+        :attr:`~DataHandler.magnitude` to True when user selected *Magnitude*, sets it to False when user selected
+        *Phase*. Calls :meth:`DataHandler.change_active_data` and :meth:`update_plot` afterwards. The colorscale
+        limits and spin boxes get adjusted too.
         """
         if self.comboBox_magn_phase.currentText() == 'Magnitude':
-            self.data_handling.magnitude = True
+            self.data_handler.magnitude = True
         elif self.comboBox_magn_phase.currentText() == 'Phase':
-            self.data_handling.magnitude = False
+            self.data_handler.magnitude = False
         else:
             raise Exception(f'Invalid text of ImageViewer.comboBox_magn_phase: {self.comboBox_magn_phase.currentText()}')
 
         self.setFocus()  # To remove focus from comboBox (up and down key input would be stolen by it)
-        self.data_handling.change_active_data()
+        self.data_handler.change_active_data()
         # Colorscale limits:
-        diff = abs(self.data_handling.active_max-self.data_handling.active_min)
+        diff = abs(self.data_handler.active_max - self.data_handler.active_min)
         if diff > 10**(-10):
             magnitude = np.log10(diff/100)
             magnitude = 10**int(magnitude) if magnitude > 0 else 10**round(magnitude)
@@ -588,8 +607,8 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             magnitude = 10**(-9)  # Should not really matter, as limits cannot be changed when min=max.
         self.doubleSpinBox_colorscale_min.setSingleStep(magnitude)
         self.doubleSpinBox_colorscale_max.setSingleStep(magnitude)
-        self.mplWidget.color_min = self.data_handling.active_min
-        self.mplWidget.color_max = self.data_handling.active_max
+        self.mplWidget.color_min = self.data_handler.active_min
+        self.mplWidget.color_max = self.data_handler.active_max
         self.doubleSpinBox_colorscale_min.setValue(self.mplWidget.color_min)
         self.doubleSpinBox_colorscale_max.setValue(self.mplWidget.color_max)
         self.update_plot()
@@ -598,29 +617,32 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         """
         Calls :meth:`.MplWidget.update_plot`.
         """
-        if not self.data_handling.empty:
+        if not self.data_handler.empty:
             self.mplWidget.update_plot()
 
     @pyqtSlot(tuple, tuple, str)
     def statistics(self, startposition, endposition, selector):
         """
-        Calculates mean and std of the data within the patch of the selector defined by :paramref:`startposition` (
-        upper left corner) and :paramref:`endposition` (lower right corner) and changes the GUI labels' text values
-        accordingly.
+        Calculates mean and std of data within a ROI.
 
-        :param startposition: Coordinates of top left corner of rectangle.
+        Calculates mean and std of :attr:`DataHandler.active_data` within the patch defined by :paramref:`selector` and
+        :paramref:`startposition` (upper left corner) and :paramref:`endposition` (lower right corner). Changes the
+        GUI labels' text values accordingly.
+
+        :param startposition: Coordinates of top left corner.
         :type startposition: tuple[numpy.float64]
-        :param endposition: Coordinates of bottom right corner of rectangle.
+        :param endposition: Coordinates of bottom right corner.
         :type endposition: tuple[numpy.float64]
-        :param selector: Type of selector (rectangle or ellipse).
+        :param selector: Type of selector (*rectangle* or *ellipse*).
         :type selector: str
         """
         # (x, y) coordinates = (col, row) indices of start and end points of selected rectangle:
         start = tuple(int(np.ceil(i)) for i in startposition)
         end = tuple(int(np.ceil(i)) for i in endposition)
         if selector == 'rectangle':
-            self.mean = np.mean(self.data_handling.active_data[self.slice, self.dynamic, start[1]:end[1], start[0]:end[0]])
-            self.std = np.std(self.data_handling.active_data[self.slice, self.dynamic, start[1]:end[1], start[0]:end[0]])
+            self.mean = np.mean(self.data_handler.active_data[self.slice, self.dynamic, start[1]:end[1],
+                                start[0]:end[0]])
+            self.std = np.std(self.data_handler.active_data[self.slice, self.dynamic, start[1]:end[1], start[0]:end[0]])
 
         elif selector == 'ellipse':
             horizontal = abs(start[0] - end[0])
@@ -631,13 +653,13 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
             x0 = center[0]
             y0 = center[1]
 
-            x = np.arange(0, self.data_handling.active_data.shape[-2])
-            y = np.arange(0, self.data_handling.active_data.shape[-1])[:, None]
+            x = np.arange(0, self.data_handler.active_data.shape[-2])
+            y = np.arange(0, self.data_handler.active_data.shape[-1])[:, None]
 
             contained_mask = ((x-x0)/a)**2 + ((y-y0)/b)**2 < 1
 
-            self.mean = np.mean(self.data_handling.active_data[self.slice, self.dynamic, :, :][contained_mask])
-            self.std = np.std(self.data_handling.active_data[self.slice, self.dynamic, :, :][contained_mask])
+            self.mean = np.mean(self.data_handler.active_data[self.slice, self.dynamic, :, :][contained_mask])
+            self.std = np.std(self.data_handler.active_data[self.slice, self.dynamic, :, :][contained_mask])
 
         else:
             raise Exception('Valid values for parameter selector are "rectangle" and "ellipse", got "{}" '
@@ -650,7 +672,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def reset_statistics(self):
         """
-        Sets statistics (mean and std) values and labels back to default.
+        Sets statistics (mean and std) values and GUI labels back to default.
         """
         self.label_mean_value.setText('-')
         self.label_std_value.setText('-')
@@ -680,10 +702,11 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
 
     def reset_colorscale_limits(self):
         """
-        Sets colorscale limits to actual minimum and maximum of currently selected dataset.
+        Sets colorscale limits to actual minimum and maximum of currently selected dataset,
+        :attr:`DataHandler.active_min` and :attr:`DataHandler.active_max`.
         """
-        self.doubleSpinBox_colorscale_min.setValue(self.data_handling.active_min)
-        self.doubleSpinBox_colorscale_max.setValue(self.data_handling.active_max)
+        self.doubleSpinBox_colorscale_min.setValue(self.data_handler.active_min)
+        self.doubleSpinBox_colorscale_max.setValue(self.data_handler.active_max)
 
     @pyqtSlot()
     def show_metadata(self):
@@ -702,11 +725,11 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     """
     def __init__(self):
         """
-        :ivar treeWidget: Widget which is used to list all datasets to choose from. Has 4 columns: Dataset name,
-            slices, dynamics, size.
-        :type treeWidget: QTreeWidget
-        :ivar selected: Name of the selected file within the UI window.
-        :vartype selected: None or str
+        :ivar treeWidget: Widget used to list all datasets to choose from. Has 4 columns: Dataset name, slices,
+            dynamics, size.
+        :vartype treeWidget: QTreeWidget
+        :ivar selected: Name of the dataset selected in the UI window.
+        :vartype selected: str
         """
         super().__init__()
         self.setupUi(self)
@@ -724,7 +747,9 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
     @pyqtSlot()
     def cancel(self):
         """
-        Closes the window and sets :attr:`~SelectBox.selected` back to `None`.
+        Closes the window.
+
+        Clears attribute :attr:`treeWidget` and sets attribute :attr:`~SelectBox.selected` to *None*.
         """
         self.selected = None
         self.treeWidget.clear()
@@ -732,7 +757,8 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
 
     def confirm(self):
         """
-        Stores the name of the selected dataset in :attr:`~SelectBox.selected` and closes the window.
+        Stores the scan name and scan ID of the selected dataset in attribute :attr:`~SelectBox.selected` and closes
+        the window.
         """
         item = self.treeWidget.selectedItems()[0]
         self.selected = item.text(0)
@@ -742,14 +768,14 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
 
 class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
     """
-    Window for showing metadata of dicom files.
+    Window for showing metadata of loaded files.
     """
     def __init__(self):
         """
         :ivar treeWidget: Widget which is used to list all metadata instances. Its 4 columns are Tag, Name, VR, Value.
-        :type treeWidget: QTreeWidget
-        :ivar lineEdit: Input field used for search terms.
-        :type lineEdit: QLineEdit
+        :vartype treeWidget: QTreeWidget
+        :ivar lineEdit: Input field used for searching metadata by name.
+        :vartype lineEdit: QLineEdit
         """
         super().__init__()
         self.setupUi(self)
@@ -766,19 +792,19 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
     @pyqtSlot()
     def cancel(self):
         """
-        Closes the window.
+        Clears attribute :attr:`treeWidget` and closes the window.
         """
         self.treeWidget.clear()
         self.hide()
 
     def open(self, file, filetype):
         """
-        Populates :attr:`treeWidget` with the metadata of the given file and shows the window.
+        Populates attribute :attr:`treeWidget` with the metadata of the given file and opens the window.
 
-        :param file: Full filename including path of the dicom file to read metadata from.
-        :type file: str
+        :param file: Full filename including path of the dicom file, or h5 dataset.
+        :type file: str, or :class:`h5py._hl.dataset.DataSet`
         :param filetype: Indicates type of file; either 'h5' or 'dicom'.
-        :vartype filetype: str
+        :type filetype: str
         """
         self.treeWidget.clear()
         items = []
@@ -802,7 +828,8 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
     @pyqtSlot()
     def filter(self):
         """
-        Hides all items in :attr:`treeWidget` whose names do not include the current text in :attr:`lineEdit`.
+        Hides all items in attribute :attr:`treeWidget` whose names do not include the current text in attribute
+        :attr:`lineEdit`.
         """
         items_matched = self.treeWidget.findItems(self.lineEdit.text(), Qt.MatchContains, 1)
 
@@ -816,9 +843,20 @@ class MetadataWindow(QtWidgets.QMainWindow, metadataWindow.Ui_MainWindow):
             iterator += 1
 
 
-class DataHandling:
+class DataHandler:
     """
-    Image data is stored in this class sorted into magnitude and phase.
+    Class for storing image data.
+
+    :attr:`active_data` is the attribute the program will usually work with, and is always equal to either
+    :attr:`magn_data` or :attr:`phase_data`. The data arrays stored in these variables are always 4-dimensional. The
+    4 dimensions are:
+
+    1. Slices
+    2. Dynamics
+    3. x
+    4. y
+
+    The :attr:`original_data` array is either 4- or 5-dimensional, see also :meth:`add_data` for more information.
     """
     def __init__(self):
         """
@@ -839,7 +877,7 @@ class DataHandling:
             True.
         :vartype magnitude: bool
         :ivar empty: Indicates whether data is currently loaded. Defaults to True.
-        :vartype empty: True
+        :vartype empty: bool
         """
         self.magnitude = True
         self.empty = True
@@ -854,19 +892,23 @@ class DataHandling:
 
     def add_data(self, data, slices=1, dynamics=1):
         """
-        This function takes the data from a loaded file, processes it, and stores it in the right instance attributes.
+        This function takes the image data from a loaded file, processes it, and stores it in the right attributes.
 
         The number of dimensions gets checked:
+
         * If 2, the data contains only one slice and one dynamic and will be expanded by two dimensions before being
           stored in order to handle it the same as 4-dimensional data.
-        * If 3, it is checked if the data contains multiple slices or multiple dynamics and will be expanded by one
-          dimension before it is further processed.
+        * If 3, it is checked if the data contains multiple slices or multiple dynamics by looking at the parameters
+          and will be expanded by one dimension before it is further processed.
         * If 4, which is the desired number of dimensions, its magnitude and phase get stored in :attr:`magn_data` and
           :attr:`phase_data` directly.
-        * If there is a 5th dimension, the first index of that dimension is selected by default, so that
-          :attr:`active_data` holds only 4 dimensions, while attr:`original_data` holds all 5 dimensions.
+        * If there are 5 dimensions (even after squeezing), the first index of the third dimension is selected by
+          default, so that :attr:`active_data` holds only 4 dimensions, while :attr:`original_data` holds all 5
+          dimensions.
 
-        Depending on the value of :paramref:`magnitude`, either the magnitude or phase data gets stored in
+        It is important that the dimensions of :paramref:`data` follow the order *slices, dynamics, x, y*.
+
+        Depending on the value of :attr:`magnitude`, either the magnitude or phase data gets stored in
         :attr:`active_data`.
 
         :param data: Image data loaded from file.
@@ -922,27 +964,27 @@ class DataHandling:
         self.active_max = self.active_data.max()
         self.empty = False
 
-    def change_active_data(self, dim5=None):
+    def change_active_data(self, dim3=None):
         """
-        Responsible for setting data which is used for plotting.
+        Responsible for setting :attr:`active_data`, which is used for plotting.
 
         Changes the value of :attr:`active_data` to either :attr:`magn_data` or :attr:`phase_data` depending on the
         value of attribute :attr:`magnitude`. Also changes :attr:`active_min` and :attr:`active_max` accordingly.
 
-        If :paramref:`dim5` is given, :attr:`magn_data` and :attr:`phase_data` are changed to absolute and phase
-        values of :attr:`original_data`[:, :, dim5, :, :] respectively first.
+        If :paramref:`dim3` is given, :attr:`magn_data` and :attr:`phase_data` are changed to absolute and phase
+        values of :attr:`original_data` [:, :, dim3, :, :] respectively first.
         """
         if not self.empty:
-            if dim5 is not None and dim5 < self.original_data.shape[2]:
-                self.magn_data = np.abs(self.original_data[:, :, dim5, :, :])
-                self.phase_data = np.angle(self.original_data[:, :, dim5, :, :])
+            if dim3 is not None and dim3 < self.original_data.shape[2]:
+                self.magn_data = np.abs(self.original_data[:, :, dim3, :, :])
+                self.phase_data = np.angle(self.original_data[:, :, dim3, :, :])
             self.active_data = self.magn_data if self.magnitude else self.phase_data
             self.active_min = self.active_data.min()
             self.active_max = self.active_data.max()
 
     def rotate_data(self, k):
         """
-        Rotates data (:attr:`magn_data`, :attr:`phase_data`, and :attr:`active_data`).
+        Rotates data (:attr:`magn_data`, :attr:`phase_data`, and :attr:`active_data`) at axes (-2, -1).
 
         :param k: Specifies how often the data is rotated by 90 degrees in anti-clockwise direction.
         :type k: int
@@ -954,10 +996,12 @@ class DataHandling:
 
     def clear_data(self):
         """
-        Sets all attributes back to 0 as they were after initialization.
+        Sets all data attributes back to None as they were after initialization.
         """
-        self.original_data = 0
-        self.magn_data = 0
-        self.phase_data = 0
-        self.active_data = 0
         self.empty = True
+        self.original_data = None
+        self.magn_data = None
+        self.phase_data = None
+        self.active_data = None
+        self.active_min = None
+        self.active_max = None

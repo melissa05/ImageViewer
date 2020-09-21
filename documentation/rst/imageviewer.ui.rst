@@ -4,7 +4,7 @@ imageviewer.ui package
 
 The modules `mainWindow module`_, `metadataWindow module`_, and `selectBox module`_ have been created automatically
 from their .ui equivalents, which were created using the QTDesigner, and are therefore not documented properly. To
-convert an .ui to a .py file, simply run::
+convert a .ui to a .py file, simply run::
 
     pyuic5 <filename>.ui -o <filename>.py
 
@@ -17,6 +17,7 @@ mplwidget module
 .. automodule:: imageviewer.ui.mplwidget
    :members:
    :undoc-members:
+   :private-members:
    :show-inheritance:
 
 

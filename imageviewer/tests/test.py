@@ -7,7 +7,7 @@ import numpy.testing as npt
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QApplication
 
-from imageviewer.main import ImageViewer, SelectBox, MetadataWindow, DataHandling
+from imageviewer.main import ImageViewer, MetadataWindow, DataHandler
 from imageviewer.fileHandling import IdentifyDatasetsDicom, GetFileContentDicom
 
 
@@ -19,6 +19,9 @@ class TestImageViewer(unittest.TestCase):
     Class for testing basic settings and behaviour of the :class:`~imageviewer.main.ImageViewer` class.
     """
     def setUp(self):
+        """
+        Sets up the testing environment.
+        """
         self.viewer = ImageViewer()
 
     def test_defaults(self):
@@ -66,7 +69,7 @@ class TestImageViewer(unittest.TestCase):
         # Setting prerequisites:
         self.viewer.filename = h5py.File('data/test_data.h5', 'r')
         self.viewer.select_box.selected = 'M0_final'
-        self.viewer.data_handling.active_data = np.expand_dims(
+        self.viewer.data_handler.active_data = np.expand_dims(
                 np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=(0, 1))
 
         # Calling function under test:
@@ -83,7 +86,7 @@ class TestImageViewer(unittest.TestCase):
         # Setting prerequisites:
         self.viewer.filename = h5py.File('data/test_data.h5', 'r')
         self.viewer.select_box.selected = 'M0_final'
-        self.viewer.data_handling.active_data = np.expand_dims(
+        self.viewer.data_handler.active_data = np.expand_dims(
                 np.abs(self.viewer.filename[self.viewer.select_box.selected][()]), axis=(0, 1))
 
         # Calling function under test:
@@ -96,10 +99,13 @@ class TestImageViewer(unittest.TestCase):
 
 class TestFileLoad(unittest.TestCase):
     """
-    Tests file and data loading functionality of :class:`~imageviewer.main.ImageViewer` and
-    :mod:`imageviewer.fileHandling`.
+    Tests file and data loading functionality of class :class:`~imageviewer.main.ImageViewer` and module
+    :mod:`~imageviewer.fileHandling`.
     """
     def setUp(self):
+        """
+        Sets up the testing environment.
+        """
         self.viewer = ImageViewer()
 
     def test_identify_datasets_dicom(self):
@@ -139,10 +145,10 @@ class TestFileLoad(unittest.TestCase):
         Tests :meth:`~imageviewer.main.ImageViewer.open_file_dcm` in the case of a single dicom fileset containing
         multiple files.
 
-        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.add_data`,
+        Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.add_data`
         and :meth:`~imageviewer.main.ImageViewer.after_data_added`, these methods are also being tested along the
         way. Normally, the function would start the thread of :class:`~imageviewer.fileHandling.GetFileContentDicom`,
-        so the :meth:`~imageviewer.main.fileHandling.GetFileContentDicom.run` method of it is also called and tested.
+        so the :meth:`~imageviewer.fileHandling.GetFileContentDicom.run` method of it is called manually and tested.
         """
         # Setting prerequisites:
         self.viewer.filetype = 'dicom'
@@ -157,7 +163,7 @@ class TestFileLoad(unittest.TestCase):
 
         # Calling GetFileContentDicom.run() and ImageViewer functions (would be called when thread emits signals):
         get_file_content_dicom = GetFileContentDicom(self.viewer.dicom_sets,
-                                                     self.viewer.filename[0],
+                                                     self.viewer.filename[0][0:-24],
                                                      self.viewer.directory)
         get_file_content_dicom.run()
         self.viewer.add_data(get_file_content_dicom.data)
@@ -176,7 +182,7 @@ class TestFileLoad(unittest.TestCase):
             data[s_i, 0, :, :] = pydicom.read_file(self.viewer.directory + filenames[s_i]).pixel_array
 
         # Assertions:
-        npt.assert_array_equal(self.viewer.data_handling.original_data, data)
+        npt.assert_array_equal(self.viewer.data_handler.original_data, data)
         self.assertEqual(self.viewer.spinBox_slice.value(), 1)
         self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
         self.assertEqual(self.viewer.label_slice_max.text(), '/32')
@@ -188,8 +194,8 @@ class TestFileLoad(unittest.TestCase):
 
     def test_open_h5(self):
         """
-        Tests :meth:`~imageviewer.main.ImageViewer.open_file_h5` in the case of a .h5 file containing 3 sets, where the
-        one selected has one slice.
+        Tests :meth:`~imageviewer.main.ImageViewer.open_file_h5` in the case of an .h5 file containing 3 sets,
+        where the one selected has one slice.
 
         Since the method being tested also calls :meth:`~imageviewer.main.ImageViewer.read_data`,
         :meth:`~imageviewer.main.ImageViewer.add_data`, and :meth:`~imageviewer.main.ImageViewer.after_data_added`,
@@ -227,7 +233,7 @@ class TestFileLoad(unittest.TestCase):
         self.viewer.after_data_added()
 
         # Assertions:
-        self.assertTrue(isinstance(self.viewer.data_handling.original_data, np.ndarray))
+        self.assertTrue(isinstance(self.viewer.data_handler.original_data, np.ndarray))
         self.assertEqual(self.viewer.spinBox_slice.value(), 1)
         self.assertEqual(self.viewer.spinBox_dynamic.value(), 1)
         self.assertEqual(self.viewer.label_slice_max.text(), '/1')
@@ -241,9 +247,12 @@ class TestFileLoad(unittest.TestCase):
 
 class TestMetadataWindow(unittest.TestCase):
     """
-    To test :class:`~imageviewer.main.MetadataWindow`.
+    Tests :class:`~imageviewer.main.MetadataWindow`.
     """
     def setUp(self):
+        """
+        Sets up the testing environment.
+        """
         self.mw = MetadataWindow()
 
     def test_open(self):
@@ -258,14 +267,18 @@ class TestMetadataWindow(unittest.TestCase):
 
 class TestDataHandling(unittest.TestCase):
     """
-    Tests :class:`~imageviewer.main.DataHandling`.
+    Tests :class:`~imageviewer.main.DataHandler`.
     """
     def setUp(self):
-        self.dataHandling = DataHandling()
+        """
+        Sets up the testing environment.
+        """
+        self.dataHandling = DataHandler()
 
     def test_add_data_2dim(self):
         """
-        Tests :meth:`~imageviewer.main.DataHandling.add_data` with one-sliced (2-dimensional) data. Magnitude is wanted.
+        Tests :meth:`imageviewer.main.DataHandler.add_data` with 2-dimensional (one slice, one dynamic) data.
+        Magnitude is wanted.
         """
         # Setting prerequisites:
         file = h5py.File('data/test_data.h5', 'r')
@@ -285,7 +298,8 @@ class TestDataHandling(unittest.TestCase):
 
     def test_add_data_3dim(self):
         """
-        Tests :meth:`~imageviewer.main.DataHandling.add_data` with multi-sliced (3-dimensional) data. Phase is wanted.
+        Tests :meth:`~imageviewer.main.DataHandler.add_data` with 3-dimensional (multiple slices, one dynamic) data.
+        Phase is wanted.
         """
         # Setting prerequisites:
         file = h5py.File('data/test_data.h5', 'r')

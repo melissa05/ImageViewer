@@ -305,7 +305,7 @@
         <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
        </property>
       </widget>
-      <widget class="QLabel" name="label_dim5">
+      <widget class="QLabel" name="label_dim3">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
          <horstretch>0</horstretch>
@@ -316,13 +316,13 @@
         <enum>Qt::LeftToRight</enum>
        </property>
        <property name="text">
-        <string>Dim 5:</string>
+        <string>Dim 3:</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
        </property>
       </widget>
-      <widget class="QSpinBox" name="spinBox_dim5">
+      <widget class="QSpinBox" name="spinBox_dim3">
        <property name="enabled">
         <bool>false</bool>
        </property>
@@ -339,7 +339,7 @@
         </size>
        </property>
       </widget>
-      <widget class="QLabel" name="label_dim5_max">
+      <widget class="QLabel" name="label_dim3_max">
        <property name="minimumSize">
         <size>
          <width>55</width>
