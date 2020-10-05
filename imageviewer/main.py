@@ -734,7 +734,7 @@ class SelectBox(QtWidgets.QMainWindow, selectBox.Ui_MainWindow):
         super().__init__()
         self.setupUi(self)
 
-        self.treeWidget.setColumnWidth(0, 300)  # Filename
+        self.treeWidget.setColumnWidth(0, 300)  # Dataset name
         self.treeWidget.setColumnWidth(1, 250)  # Protocol name
         self.treeWidget.setColumnWidth(2, 50)  # Slices
         self.treeWidget.setColumnWidth(3, 50)  # Dynamics

@@ -1,6 +1,8 @@
 imageviewer.tests package
 =========================
 
+The tests were created using the ``unittest`` framework.
+
 
 test module
 -----------------------------

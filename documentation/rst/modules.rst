@@ -1,9 +1,6 @@
 Submodules
 ==========
 
-.. toctree::
-   :maxdepth: 3
-
 main module
 -----------
 
@@ -11,6 +8,7 @@ main module
   :members:
   :undoc-members:
   :show-inheritance:
+
 
 fileHandling module
 -------------------

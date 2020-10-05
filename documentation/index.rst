@@ -10,8 +10,8 @@ Welcome to ImageViewer's documentation!
    :maxdepth: 3
    :caption: Contents:
 
-   rst/modules
-   rst/packages
+   rst/description
+   rst/code
 
 
 Indices and tables

@@ -163,7 +163,7 @@ class IdentifyDatasetsDicom(QRunnable):
         The following naming conventions for files are important for this function to work (assuming the file ending
         '.dcm' is included):
 
-        1. The first to -25th characters, which usually contain the scan name and the scan ID, are identical for each
+        1. The first to -25 characters, which usually contain the scan name and the scan ID, are identical for each
            file belonging to the same set, and are unique among different sets.
         2. Characters -20 to -17 contain the slice number.
         3. Characters -8 to -5 contain the dynamic number.
