@@ -31,6 +31,7 @@ release = '1.0.dev0'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
+# Unfortunately, paramlinks does not work like it should...
 extensions = ['sphinx.ext.autodoc', 'sphinx_paramlinks']
 
 # Add any paths that contain templates here, relative to this directory.
