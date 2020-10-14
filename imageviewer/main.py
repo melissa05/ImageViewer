@@ -2,7 +2,7 @@ import sys
 import os
 import h5py
 import pydicom
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.Qt import Qt
 from PyQt5.QtCore import QThreadPool, pyqtSlot
 import numpy as np
