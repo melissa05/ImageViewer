@@ -620,7 +620,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
         if not self.data_handler.empty:
             self.mplWidget.update_plot()
 
-    @pyqtSlot(tuple, tuple, str)
+    # @pyqtSlot(tuple, tuple, str)
     def statistics(self, startposition, endposition, selector):
         """
         Calculates mean and std of data within a ROI.
