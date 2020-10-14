@@ -497,7 +497,7 @@ class ImageViewer(QtWidgets.QMainWindow, mainWindow.Ui_MainWindow):
                 date = d[:4] + '/' + d[4:6] + '/' + d[6:]
                 self.label_date_value.setText(date)
 
-    @pyqtSlot(np.ndarray, int, int)
+    # @pyqtSlot(np.ndarray, int, int)
     def add_data(self, data, slices=1, dynamics=1):
         """
         Hands the data over to :class:`DataHandler` to store it appropriately by calling it's method
