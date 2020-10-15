@@ -34,7 +34,7 @@ release = '1.0.dev0'
 extensions = ['sphinx.ext.autodoc', 'sphinx_paramlinks']
 
 autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets', 'PyQt5.QtWidgets.QWidget',
-                        'PyQt5.QtCore.pyqtSlot', 'QtWidgets.QMainWindow', 'PyQt5.QtCore.QRunnable',
+                        'PyQt5.QtCore.pyqtSlot', 'PyQt5.QtCore.pyqtSignal' 'QtWidgets.QMainWindow', 'PyQt5.QtCore.QRunnable',
                         'PyQt5.QtCore.QObject', 'matplotlib', 'h5py', 'pydicom', 'numpy']
 
 # Add any paths that contain templates here, relative to this directory.
