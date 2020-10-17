@@ -5,3 +5,4 @@ numpy==1.18.2
 pydicom==1.4.2
 Sphinx==3.2.1
 sphinx-paramlinks==0.4.2
+libxcb-xinerama0
