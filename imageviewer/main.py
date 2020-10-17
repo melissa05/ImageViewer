@@ -2,9 +2,10 @@ import sys
 import os
 import h5py
 import pydicom
-from PyQt5 import QtWidgets
-from PyQt5.Qt import Qt
-from PyQt5.QtCore import QThreadPool, pyqtSlot
+# from PyQt5 import QtWidgets
+# from PyQt5.Qt import Qt
+# from PyQt5.QtCore import QThreadPool, pyqtSlot
+from imageviewer.qt import *
 import numpy as np
 
 from imageviewer import GetFileContentDicom, GetFileContentH5, IdentifyDatasetsDicom

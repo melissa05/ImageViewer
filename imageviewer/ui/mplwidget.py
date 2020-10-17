@@ -1,6 +1,7 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAction
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
-from PyQt5.QtGui import QIcon, QPixmap, QColor
+# from PyQt5.QtWidgets import QWidget, QVBoxLayout, QAction
+# from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, Qt
+# from PyQt5.QtGui import QIcon, QPixmap, QColor
+from imageviewer.qt import *
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT
 from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.figure import Figure
@@ -221,8 +222,7 @@ class NavigationToolbar(NavigationToolbar2QT):
         if not self.mplwidget.empty:
             self.rectselect_startposition = (eclick.xdata, eclick.ydata)
             self.rectselect_endposition = (erelease.xdata, erelease.ydata)
-            self.signals.roiSelection.emit(self.rectselect_startposition, self.rectselect_endposition,
-                                                   'rectangle')
+            self.signals.roiSelection.emit(self.rectselect_startposition, self.rectselect_endposition, 'rectangle')
 
     @pyqtSlot()
     def activate_ellipse_select(self):

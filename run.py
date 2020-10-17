@@ -1,5 +1,6 @@
 import sys
-from PyQt5 import QtWidgets
+# from PyQt5 import QtWidgets
+from imageviewer.qt import *
 from imageviewer.main import ImageViewer
 
 if __name__ == '__main__':
