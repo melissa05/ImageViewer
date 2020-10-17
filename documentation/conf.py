@@ -36,10 +36,10 @@ release = '1.0.dev0'
 # Unfortunately, paramlinks does not work like it should...
 extensions = ['sphinx.ext.autodoc', 'sphinx_paramlinks']
 
-# autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
-ON_RTD = os.environ.get('READTHEDOCS', None) == 'True'
-if ON_RTD:
-    autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
+autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
+# ON_RTD = os.environ.get('READTHEDOCS', None) == 'True'
+# if ON_RTD:
+#     autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

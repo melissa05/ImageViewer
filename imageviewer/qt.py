@@ -1,7 +1,7 @@
 import os
 
 ON_RTD = os.environ.get('READTHEDOCS', None) == 'True'
-if ON_RTD:
+if False:
     autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
 
     class QApplication(object):
