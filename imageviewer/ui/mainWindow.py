@@ -9,8 +9,6 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-# from imageviewer.qt import *
-
 
 
 class Ui_MainWindow(object):

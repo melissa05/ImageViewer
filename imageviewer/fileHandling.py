@@ -1,7 +1,6 @@
 import os
 import pydicom
 from PyQt5.QtCore import QRunnable, QObject, pyqtSignal
-# from imageviewer.qt import *
 import numpy as np
 
 
