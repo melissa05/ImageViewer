@@ -12,6 +12,8 @@
 
 import os
 import sys
+
+
 sys.path.insert(0, os.path.abspath('..'))
 sys.path.append('imageviewer')
 
@@ -34,7 +36,102 @@ release = '1.0.dev0'
 # Unfortunately, paramlinks does not work like it should...
 extensions = ['sphinx.ext.autodoc', 'sphinx_paramlinks']
 
-autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui=object', 'PyQt5.QtCore=object', 'PyQt5.QtWidgets=object']
+# autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
+ON_RTD = os.environ.get('READTHEDOCS', None) == 'True'
+if ON_RTD:
+    autodoc_mock_imports = ['sip', 'PyQt5', 'PyQt5.QtGui', 'PyQt5.QtCore', 'PyQt5.QtWidgets']
+
+    class QApplication(object):
+        pass
+
+    class pyqtSignal(object):
+        pass
+
+    class pyqtSlot(object):
+        pass
+
+    class QObject(object):
+        pass
+
+    class QAbstractItemModel(object):
+        pass
+
+    class QModelIndex(object):
+        pass
+
+    class QTabWidget(object):
+        pass
+
+    class QWebPage(object):
+        pass
+
+    class QTableView(object):
+        pass
+
+    class QWebView(object):
+        pass
+
+    class QAbstractTableModel(object):
+        pass
+
+    class Qt(object):
+        DisplayRole = None
+
+    class QWidget(object):
+        pass
+
+    class QPushButton(object):
+        pass
+
+    class QDoubleSpinBox(object):
+        pass
+
+    class QListWidget(object):
+        pass
+
+    class QDialog(object):
+        pass
+
+    class QSize(object):
+        pass
+
+    class QTableWidget(object):
+        pass
+
+    class QMainWindow(object):
+        pass
+
+    class QTreeWidget(object):
+        pass
+
+    class QAbstractItemDelegate(object):
+        pass
+
+    class QColor(object):
+        pass
+
+    class QGraphicsItemGroup(object):
+        pass
+
+    class QGraphicsItem(object):
+        pass
+
+    class QGraphicsPathItem(object):
+        pass
+
+    class QGraphicsTextItem(object):
+        pass
+
+    class QGraphicsRectItem(object):
+        pass
+
+    class QGraphicsScene(object):
+        pass
+
+    class QGraphicsView(object):
+        pass
+
+    app = None
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
