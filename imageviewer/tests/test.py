@@ -1,4 +1,5 @@
 import unittest
+import sys
 import os
 import h5py
 import pydicom
@@ -7,6 +8,7 @@ import numpy.testing as npt
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QApplication
 
+sys.path.append('../..')
 from imageviewer.main import ImageViewer, MetadataWindow, DataHandler
 from imageviewer.fileHandling import IdentifyDatasetsDicom, GetFileContentDicom
 

@@ -10,7 +10,8 @@ then enter::
 
     python setup.py install
 
-For this you need to have Python (3.6 or higher) installed. The required packages will be installed automatically.
+For this you need to have Python (3.6 or higher) installed. The required packages will be installed automatically,
+however, you might need to install ``Qt5`` (download at `www.qt.io <www.qt.io/offline-installers>`__).
 
 To start the programme, enter::
 
@@ -35,7 +36,7 @@ Once you have started the programme, a window opens which should look like this:
 
 
 Once a file was loaded, the image data of the file will be displayed and a few GUI elements will change, as can be seen
-in the following screenshot.
+in the following screenshot:
 
 .. figure:: images/start_fileloaded_marked.png
     :scale: 75%
