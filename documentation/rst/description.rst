@@ -11,7 +11,7 @@ then enter::
     python setup.py install
 
 For this you need to have Python (3.6 or higher) installed. The required packages will be installed automatically,
-however, you might need to install ``Qt5`` (download at `www.qt.io <www.qt.io/offline-installers>`__).
+however, you might need to install ``Qt5`` (download at `www.qt.io <https://www.qt.io/offline-installers>`_).
 
 To start the programme, enter::
 
